@@ -93,7 +93,7 @@ export const api = {
       return request<Borrow[]>(`/api/borrows/mine${q}`);
     },
     get: (id: number) => request<Borrow>(`/api/borrows/${id}`),
-    create: (data: Partial<Borrow> & { borrowDate: string; expectedReturnDate: string }) =>
+    create: (data: { toolId: number; borrowDate: string; expectedReturnDate: string }) =>
       request<Borrow>('/api/borrows', { method: 'POST', body: JSON.stringify(data) }),
     approve: (id: number) =>
       request<Borrow>(`/api/borrows/${id}/approve`, { method: 'PUT' }),

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import type { Tool } from '@shared/types';
-import { ArrowLeft, Save, Calculator, LogIn, User, Hash, Phone } from 'lucide-react';
-import { useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, Save, Calculator, Hash, Phone, User } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { formatMoney } from '@/lib/format';
 
 export default function BorrowForm() {
@@ -12,28 +12,20 @@ export default function BorrowForm() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [form, setForm] = useState({
     toolId: 0,
-    borrowerName: '',
-    borrowerRoom: '',
-    borrowerPhone: '',
     borrowDate: new Date().toISOString().slice(0, 10),
     expectedReturnDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
   });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.tools.list().then(setTools);
-  }, []);
+    if (initialized && !user) {
+      navigate('/login', { state: { from: '/borrows/new' } });
+    }
+  }, [initialized, user, navigate]);
 
   useEffect(() => {
-    if (initialized && user) {
-      setForm(f => ({
-        ...f,
-        borrowerName: user.name,
-        borrowerRoom: user.room,
-        borrowerPhone: user.phone,
-      }));
-    }
-  }, [initialized, user]);
+    api.tools.list().then(setTools);
+  }, []);
 
   const selectedTool = useMemo(() => tools.find(t => t.id === form.toolId), [tools, form.toolId]);
 
@@ -52,18 +44,10 @@ export default function BorrowForm() {
       alert('请选择工具');
       return;
     }
-    if (!form.borrowerName.trim() || !form.borrowerRoom.trim() || !form.borrowerPhone.trim()) {
-      alert('请填写完整借用人信息');
-      return;
-    }
     setSaving(true);
     try {
       await api.borrows.create(form);
-      if (user) {
-        navigate('/my-borrows');
-      } else {
-        navigate('/borrows');
-      }
+      navigate('/my-borrows');
     } catch (err) {
       alert((err as Error).message);
     } finally {
@@ -71,71 +55,41 @@ export default function BorrowForm() {
     }
   };
 
-  if (!initialized) {
+  if (!initialized || !user) {
     return <div className="text-gray-500 py-10 text-center">加载中...</div>;
   }
 
   return (
     <div className="max-w-2xl">
-      <button onClick={() => navigate(user ? '/my-borrows' : '/borrows')} className="btn btn-secondary mb-5">
+      <button onClick={() => navigate('/my-borrows')} className="btn btn-secondary mb-5">
         <ArrowLeft className="w-4 h-4 mr-1.5" />
-        返回列表
+        返回我的借用
       </button>
 
       <div className="card p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-gray-900">新建借用申请</h2>
-          {!user && (
-            <Link
-              to="/login"
-              state={{ from: '/borrows/new' }}
-              className="btn btn-sm btn-primary"
-            >
-              <LogIn className="w-3.5 h-3.5 mr-1" />
-              登录账号
-            </Link>
-          )}
+        <h2 className="text-lg font-semibold text-gray-900 mb-6">新建借用申请</h2>
+
+        <div className="mb-6 p-4 bg-primary-50 rounded-lg border border-primary-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-white font-bold">
+              {user.name.charAt(0)}
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold text-primary-900">{user.name}</div>
+              <div className="text-xs text-primary-600 mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="flex items-center gap-1">
+                  <Hash className="w-3 h-3" />
+                  {user.room}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Phone className="w-3 h-3" />
+                  {user.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}
+                </span>
+              </div>
+            </div>
+            <span className="badge bg-green-100 text-green-800">信息已绑定</span>
+          </div>
         </div>
-
-        {user && (
-          <div className="mb-6 p-4 bg-primary-50 rounded-lg border border-primary-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-white font-bold">
-                {user.name.charAt(0)}
-              </div>
-              <div className="flex-1">
-                <div className="font-semibold text-primary-900">已登录 · {user.name}</div>
-                <div className="text-xs text-primary-600 mt-0.5 flex items-center gap-3">
-                  <span className="flex items-center gap-1">
-                    <Hash className="w-3 h-3" />
-                    {user.room}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Phone className="w-3 h-3" />
-                    {user.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}
-                  </span>
-                </div>
-              </div>
-              <span className="badge bg-green-100 text-green-800">信息已自动填充</span>
-            </div>
-          </div>
-        )}
-
-        {!user && (
-          <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                <User className="w-5 h-5 text-amber-700" />
-              </div>
-              <div className="flex-1">
-                <div className="font-semibold text-amber-900">未登录（匿名借用）</div>
-                <div className="text-xs text-amber-600 mt-0.5">
-                  建议登录后借用，可自动填充信息并在个人中心查看历史记录
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
@@ -173,50 +127,25 @@ export default function BorrowForm() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">
-                <User className="w-4 h-4 mr-1.5" />
-                借用人姓名 *
-              </label>
-              <input
-                type="text"
-                className="input"
-                value={form.borrowerName}
-                onChange={e => setForm({ ...form, borrowerName: e.target.value })}
-                placeholder="请输入姓名"
-                readOnly={!!user}
-              />
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+              <User className="w-3.5 h-3.5" />
+              借用人信息（已从您的账号自动绑定）
             </div>
-            <div>
-              <label className="label">
-                <Hash className="w-4 h-4 mr-1.5" />
-                房号 *
-              </label>
-              <input
-                type="text"
-                className="input"
-                value={form.borrowerRoom}
-                onChange={e => setForm({ ...form, borrowerRoom: e.target.value })}
-                placeholder="例如：3栋2单元501"
-                readOnly={!!user}
-              />
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div>
+                <div className="text-xs text-gray-400">姓名</div>
+                <div className="font-medium text-gray-900">{user.name}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400">房号</div>
+                <div className="font-medium text-gray-900">{user.room}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400">手机</div>
+                <div className="font-medium text-gray-900">{user.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}</div>
+              </div>
             </div>
-          </div>
-
-          <div>
-            <label className="label">
-              <Phone className="w-4 h-4 mr-1.5" />
-              联系电话 *
-            </label>
-            <input
-              type="tel"
-              className="input"
-              value={form.borrowerPhone}
-              onChange={e => setForm({ ...form, borrowerPhone: e.target.value })}
-              placeholder="请输入手机号"
-              readOnly={!!user}
-            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -255,7 +184,7 @@ export default function BorrowForm() {
               <Save className="w-4 h-4 mr-1.5" />
               {saving ? '提交中...' : '提交申请'}
             </button>
-            <button type="button" onClick={() => navigate(user ? '/my-borrows' : '/borrows')} className="btn btn-secondary">
+            <button type="button" onClick={() => navigate('/my-borrows')} className="btn btn-secondary">
               取消
             </button>
           </div>

@@ -67,9 +67,21 @@ router.get('/:id', (req: Request, res: Response) => {
   }
 });
 
-router.post('/', (req: Request, res: Response) => {
+router.post('/', authMiddleware, (req: Request, res: Response) => {
   try {
-    const { toolId, borrowerName, borrowerRoom, borrowerPhone, borrowDate, expectedReturnDate } = req.body;
+    const userId = getCurrentUserId(req);
+    if (!userId) {
+      res.status(401).json({ success: false, error: '未登录，请先登录' });
+      return;
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as { name: string; room: string; phone: string } | undefined;
+    if (!user) {
+      res.status(404).json({ success: false, error: '用户不存在' });
+      return;
+    }
+
+    const { toolId, borrowDate, expectedReturnDate } = req.body;
     const tool = db.prepare('SELECT * FROM tools WHERE id = ?').get(toolId) as Tool | undefined;
     if (!tool) {
       res.status(404).json({ success: false, error: '工具不存在' });
@@ -85,17 +97,10 @@ router.post('/', (req: Request, res: Response) => {
     const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
     const totalRent = days * tool.dailyRent;
 
-    let userId: number | null = null;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const id = getCurrentUserId(req);
-      if (id) userId = id;
-    }
-
     const info = db.prepare(`
       INSERT INTO borrows (toolId, toolName, userId, borrowerName, borrowerRoom, borrowerPhone, borrowDate, expectedReturnDate, status, totalRent)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-    `).run(toolId, tool.name, userId, borrowerName, borrowerRoom, borrowerPhone, borrowDate, expectedReturnDate, totalRent);
+    `).run(toolId, tool.name, userId, user.name, user.room, user.phone, borrowDate, expectedReturnDate, totalRent);
 
     const borrow = db.prepare('SELECT * FROM borrows WHERE id = ?').get(info.lastInsertRowid) as Borrow;
     res.json({ success: true, data: borrow, message: '借用申请已提交' });
