@@ -37,6 +37,16 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/mine', authMiddleware, (req: Request, res: Response) => {
   try {
     const userId = getCurrentUserId(req);
+    const user = db.prepare('SELECT phone FROM users WHERE id = ?').get(userId) as { phone: string } | undefined;
+
+    if (user) {
+      db.prepare(`
+        UPDATE borrows
+        SET userId = ?
+        WHERE borrowerPhone = ? AND userId IS NULL
+      `).run(userId, user.phone);
+    }
+
     const { status } = req.query;
     let sql = 'SELECT * FROM borrows WHERE userId = ?';
     const params: unknown[] = [userId];

@@ -174,6 +174,13 @@ router.get('/me', authMiddleware, (req: Request, res: Response) => {
       res.status(404).json({ success: false, error: '用户不存在' });
       return;
     }
+
+    db.prepare(`
+      UPDATE borrows
+      SET userId = ?
+      WHERE borrowerPhone = ? AND userId IS NULL
+    `).run(userId, user.phone);
+
     res.json({ success: true, data: user });
   } catch (err) {
     res.status(500).json({ success: false, error: (err as Error).message });

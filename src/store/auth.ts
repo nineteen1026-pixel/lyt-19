@@ -52,7 +52,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const result = await api.auth.login(data);
       setToken(result.token);
-      set({ user: result.user, token: result.token });
+      set({ user: result.user, token: result.token, initialized: true });
       return result.user;
     } finally {
       set({ loading: false });
@@ -67,7 +67,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // ignore error
     } finally {
       setToken(null);
-      set({ user: null, token: null, loading: false });
+      set({ user: null, token: null, loading: false, initialized: true });
     }
   },
 

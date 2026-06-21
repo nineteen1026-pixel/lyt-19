@@ -22,8 +22,9 @@ export default function BorrowList() {
   };
 
   useEffect(() => {
+    if (!initialized) return;
     loadData();
-  }, [status]);
+  }, [status, initialized]);
 
   const handleNewBorrow = () => {
     if (!user) {

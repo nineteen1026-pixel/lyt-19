@@ -8,16 +8,17 @@ import { Link, useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, initialized } = useAuthStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!initialized) return;
     api.dashboard.getStats().then(data => {
       setStats(data);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  }, [initialized]);
 
   const handleNewBorrow = () => {
     if (!user) {
