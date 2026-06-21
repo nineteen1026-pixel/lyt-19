@@ -8,11 +8,14 @@ import BorrowForm from "@/pages/BorrowForm";
 import DepositList from "@/pages/DepositList";
 import DamageList from "@/pages/DamageList";
 import DamageForm from "@/pages/DamageForm";
+import LoginPage from "@/pages/LoginPage";
+import MyBorrows from "@/pages/MyBorrows";
 
 export default function App() {
   return (
     <Router>
       <Routes>
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="tools" element={<ToolList />} />
@@ -23,6 +26,7 @@ export default function App() {
           <Route path="deposits" element={<DepositList />} />
           <Route path="damages" element={<DamageList />} />
           <Route path="damages/new" element={<DamageForm />} />
+          <Route path="my-borrows" element={<MyBorrows />} />
         </Route>
       </Routes>
     </Router>

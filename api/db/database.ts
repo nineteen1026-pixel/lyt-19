@@ -18,6 +18,24 @@ db.pragma('foreign_keys = ON');
 
 function initDatabase() {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      room TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'resident',
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS verification_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expiresAt TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+
     CREATE TABLE IF NOT EXISTS tools (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -35,6 +53,7 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       toolId INTEGER NOT NULL,
       toolName TEXT NOT NULL,
+      userId INTEGER,
       borrowerName TEXT NOT NULL,
       borrowerRoom TEXT NOT NULL,
       borrowerPhone TEXT NOT NULL,
@@ -44,7 +63,8 @@ function initDatabase() {
       status TEXT NOT NULL DEFAULT 'pending',
       totalRent REAL NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-      FOREIGN KEY (toolId) REFERENCES tools(id)
+      FOREIGN KEY (toolId) REFERENCES tools(id),
+      FOREIGN KEY (userId) REFERENCES users(id)
     );
 
     CREATE TABLE IF NOT EXISTS deposits (
@@ -73,6 +93,13 @@ function initDatabase() {
       FOREIGN KEY (toolId) REFERENCES tools(id)
     );
   `);
+
+  const pragma = db.prepare("PRAGMA table_info(borrows)");
+  const columns = pragma.all() as { name: string }[];
+  const hasUserId = columns.some(c => c.name === 'userId');
+  if (!hasUserId) {
+    db.exec(`ALTER TABLE borrows ADD COLUMN userId INTEGER REFERENCES users(id)`);
+  }
 
   const toolCount = (db.prepare('SELECT COUNT(*) as count FROM tools').get() as { count: number }).count;
   if (toolCount === 0) {

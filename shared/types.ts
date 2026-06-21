@@ -3,6 +3,30 @@ export type BorrowStatus = 'pending' | 'approved' | 'rejected' | 'borrowing' | '
 export type DepositType = 'collect' | 'refund';
 export type DepositStatus = 'pending' | 'completed' | 'deducted';
 export type DamageSeverity = 'minor' | 'moderate' | 'severe';
+export type UserRole = 'resident' | 'admin';
+
+export interface User {
+  id: number;
+  phone: string;
+  name: string;
+  room: string;
+  role: UserRole;
+  createdAt: string;
+}
+
+export interface VerificationCode {
+  id: number;
+  phone: string;
+  code: string;
+  expiresAt: string;
+  used: boolean;
+  createdAt: string;
+}
+
+export interface LoginResponse {
+  user: User;
+  token: string;
+}
 
 export interface Tool {
   id: number;
@@ -21,6 +45,7 @@ export interface Borrow {
   id: number;
   toolId: number;
   toolName: string;
+  userId: number | null;
   borrowerName: string;
   borrowerRoom: string;
   borrowerPhone: string;

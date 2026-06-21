@@ -1,17 +1,48 @@
 import { Router, type Request, type Response } from 'express';
 import db from '../db/database.js';
 import type { Borrow, Tool, Deposit, Damage } from '../../shared/types.js';
+import { authMiddleware, getCurrentUserId } from './auth.js';
 
 const router = Router();
 
 router.get('/', (req: Request, res: Response) => {
   try {
-    const { status } = req.query;
+    const { status, userId } = req.query;
     let sql = 'SELECT * FROM borrows';
     const params: unknown[] = [];
+    const conditions: string[] = [];
 
     if (status && status !== 'all') {
-      sql += ' WHERE status = ?';
+      conditions.push('status = ?');
+      params.push(status);
+    }
+
+    if (userId) {
+      conditions.push('userId = ?');
+      params.push(Number(userId));
+    }
+
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+    sql += ' ORDER BY createdAt DESC';
+
+    const borrows = db.prepare(sql).all(...params) as Borrow[];
+    res.json({ success: true, data: borrows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+router.get('/mine', authMiddleware, (req: Request, res: Response) => {
+  try {
+    const userId = getCurrentUserId(req);
+    const { status } = req.query;
+    let sql = 'SELECT * FROM borrows WHERE userId = ?';
+    const params: unknown[] = [userId];
+
+    if (status && status !== 'all') {
+      sql += ' AND status = ?';
       params.push(status);
     }
     sql += ' ORDER BY createdAt DESC';
@@ -54,10 +85,17 @@ router.post('/', (req: Request, res: Response) => {
     const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
     const totalRent = days * tool.dailyRent;
 
+    let userId: number | null = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const id = getCurrentUserId(req);
+      if (id) userId = id;
+    }
+
     const info = db.prepare(`
-      INSERT INTO borrows (toolId, toolName, borrowerName, borrowerRoom, borrowerPhone, borrowDate, expectedReturnDate, status, totalRent)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-    `).run(toolId, tool.name, borrowerName, borrowerRoom, borrowerPhone, borrowDate, expectedReturnDate, totalRent);
+      INSERT INTO borrows (toolId, toolName, userId, borrowerName, borrowerRoom, borrowerPhone, borrowDate, expectedReturnDate, status, totalRent)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+    `).run(toolId, tool.name, userId, borrowerName, borrowerRoom, borrowerPhone, borrowDate, expectedReturnDate, totalRent);
 
     const borrow = db.prepare('SELECT * FROM borrows WHERE id = ?').get(info.lastInsertRowid) as Borrow;
     res.json({ success: true, data: borrow, message: '借用申请已提交' });

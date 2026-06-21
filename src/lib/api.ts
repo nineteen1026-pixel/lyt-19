@@ -1,10 +1,37 @@
-import type { ApiResponse, Tool, Borrow, Deposit, Damage, DashboardStats } from '@shared/types';
+import type { ApiResponse, Tool, Borrow, Deposit, Damage, DashboardStats, User, LoginResponse } from '@shared/types';
+
+const TOKEN_KEY = 'auth_token';
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null): void {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...options,
   });
+
+  if (res.status === 401) {
+    setToken(null);
+  }
+
   const data = (await res.json()) as ApiResponse<T>;
   if (!data.success) {
     throw new Error(data.error || '请求失败');
@@ -13,6 +40,26 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  auth: {
+    sendCode: (phone: string) =>
+      request<{ debug?: string }>('/api/auth/send-code', {
+        method: 'POST',
+        body: JSON.stringify({ phone }),
+      }),
+    login: (data: { phone: string; code: string; name?: string; room?: string }) =>
+      request<LoginResponse>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    me: () => request<User>('/api/auth/me'),
+    updateProfile: (data: { name?: string; room?: string }) =>
+      request<User>('/api/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    logout: () =>
+      request<void>('/api/auth/logout', { method: 'POST' }),
+  },
   dashboard: {
     getStats: () => request<DashboardStats>('/api/dashboard'),
   },
@@ -34,9 +81,16 @@ export const api = {
       request<void>(`/api/tools/${id}`, { method: 'DELETE' }),
   },
   borrows: {
-    list: (params?: { status?: string }) => {
+    list: (params?: { status?: string; userId?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.status) q.set('status', params.status);
+      if (params?.userId) q.set('userId', String(params.userId));
+      const qs = q.toString();
+      return request<Borrow[]>(`/api/borrows${qs ? `?${qs}` : ''}`);
+    },
+    mine: (params?: { status?: string }) => {
       const q = params?.status ? `?status=${params.status}` : '';
-      return request<Borrow[]>(`/api/borrows${q}`);
+      return request<Borrow[]>(`/api/borrows/mine${q}`);
     },
     get: (id: number) => request<Borrow>(`/api/borrows/${id}`),
     create: (data: Partial<Borrow> & { borrowDate: string; expectedReturnDate: string }) =>
