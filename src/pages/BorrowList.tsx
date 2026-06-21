@@ -2,14 +2,13 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import type { Borrow } from '@shared/types';
 import { borrowStatusMap, formatDate, formatMoney } from '@/lib/format';
-import { Plus, ArrowLeft, Check, X, RotateCcw, Wallet } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Plus, Check, X, RotateCcw } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function BorrowList() {
   const [borrows, setBorrows] = useState<Borrow[]>([]);
   const [status, setStatus] = useState('all');
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
   const loadData = () => {
     setLoading(true);
@@ -24,14 +23,9 @@ export default function BorrowList() {
   }, [status]);
 
   const handleApprove = async (b: Borrow) => {
+    if (!window.confirm(`确定批准 ${b.borrowerName} 的"${b.toolName}"借用申请？\n\n批准后将扣除库存并收取工具押金。`)) return;
     try {
-      await api.borrows.update(b.id, { status: 'approved' });
-      await api.deposits.create({
-        borrowId: b.id,
-        amount: 0,
-        type: 'collect',
-        remark: `${b.toolName} 借用押金`,
-      });
+      await api.borrows.approve(b.id);
       loadData();
     } catch (e) {
       alert((e as Error).message);
@@ -41,7 +35,7 @@ export default function BorrowList() {
   const handleReject = async (id: number) => {
     if (!window.confirm('确定拒绝该借用申请吗？')) return;
     try {
-      await api.borrows.update(id, { status: 'rejected' });
+      await api.borrows.reject(id);
       loadData();
     } catch (e) {
       alert((e as Error).message);
@@ -49,12 +43,9 @@ export default function BorrowList() {
   };
 
   const handleReturn = async (b: Borrow) => {
-    if (!window.confirm(`确认 ${b.borrowerName} 已归还"${b.toolName}"？`)) return;
+    if (!window.confirm(`确认 ${b.borrowerName} 已归还"${b.toolName}"？\n\n归还后将结算押金并退还剩余金额。`)) return;
     try {
-      await api.borrows.update(b.id, {
-        status: 'returned',
-        actualReturnDate: new Date().toISOString().slice(0, 10),
-      });
+      await api.borrows.returnTool(b.id);
       loadData();
     } catch (e) {
       alert((e as Error).message);
@@ -64,7 +55,6 @@ export default function BorrowList() {
   const statusTabs = [
     { key: 'all', label: '全部' },
     { key: 'pending', label: '待审批' },
-    { key: 'approved', label: '已批准' },
     { key: 'borrowing', label: '借用中' },
     { key: 'returned', label: '已归还' },
     { key: 'overdue', label: '已逾期' },
@@ -139,17 +129,12 @@ export default function BorrowList() {
                         {b.status === 'pending' && (
                           <>
                             <button onClick={() => handleApprove(b)} className="btn btn-sm bg-green-600 text-white hover:bg-green-700">
-                              <Check className="w-3.5 h-3.5 mr-0.5" />通过
+                              <Check className="w-3.5 h-3.5 mr-0.5" />批准借出
                             </button>
                             <button onClick={() => handleReject(b.id)} className="btn btn-sm text-red-600 border border-red-200 hover:bg-red-50">
                               <X className="w-3.5 h-3.5 mr-0.5" />拒绝
                             </button>
                           </>
-                        )}
-                        {b.status === 'approved' && (
-                          <button onClick={() => handleApprove(b)} className="btn btn-sm bg-primary-600 text-white hover:bg-primary-700">
-                            <Wallet className="w-3.5 h-3.5 mr-0.5" />收押金出库
-                          </button>
                         )}
                         {(b.status === 'borrowing' || b.status === 'overdue') && (
                           <button onClick={() => handleReturn(b)} className="btn btn-sm bg-blue-600 text-white hover:bg-blue-700">

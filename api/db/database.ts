@@ -88,7 +88,7 @@ function seedData() {
 
   const tools = [
     ['电钻', '电动工具', '🔌', '博世手持电钻，含多种钻头，适合家庭打孔安装', 200, 10, 2],
-    ['人字梯', '登高工具', '🪜', '2米铝合金人字梯，稳固防滑', 150, 5, 3],
+    ['人字梯', '登高工具', '🪜', '2米铝合金人字梯，稳固防滑', 150, 5, 2],
     ['扳手套装', '手动工具', '🔧', '多功能扳手套装，含多种规格套筒扳手', 100, 5, 2],
     ['手推车', '搬运工具', '🛒', '折叠式手推车，承重100kg，适合搬运重物', 100, 8, 2],
     ['打气筒', '五金工具', '🎈', '高压打气筒，适合自行车、球类充气', 30, 2, 3],
@@ -114,11 +114,11 @@ function seedData() {
   const expectedDate = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000);
 
   insertBorrow.run(
-    1, '电钻', '张三', '3栋2单元501', '13800138001',
+    2, '人字梯', '张三', '3栋2单元501', '13800138001',
     borrowDate.toISOString().slice(0, 10),
     expectedDate.toISOString().slice(0, 10),
     'borrowing',
-    30
+    15
   );
 
   insertBorrow.run(
@@ -130,10 +130,10 @@ function seedData() {
   );
 
   const insertDeposit = db.prepare(`
-    INSERT INTO deposits (borrowId, amount, type, status, remark)
-    VALUES (?, ?, 'collect', 'completed', ?)
+    INSERT INTO deposits (borrowId, amount, type, status, deductedAmount, remark)
+    VALUES (?, ?, 'collect', 'completed', 0, ?)
   `);
-  insertDeposit.run(1, 200, '借用电钻押金');
+  insertDeposit.run(1, 150, '借用人字梯押金');
 
   const insertDamage = db.prepare(`
     INSERT INTO damages (borrowId, toolId, description, severity, compensationAmount, reportedBy, images)

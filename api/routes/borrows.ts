@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import db from '../db/database.js';
-import type { Borrow, Tool } from '../../shared/types.js';
+import type { Borrow, Tool, Deposit, Damage } from '../../shared/types.js';
 
 const router = Router();
 
@@ -66,6 +66,106 @@ router.post('/', (req: Request, res: Response) => {
   }
 });
 
+router.put('/:id/approve', (req: Request, res: Response) => {
+  try {
+    const borrow = db.prepare('SELECT * FROM borrows WHERE id = ?').get(req.params.id) as Borrow | undefined;
+    if (!borrow) {
+      res.status(404).json({ success: false, error: '借用记录不存在' });
+      return;
+    }
+    if (borrow.status !== 'pending') {
+      res.status(400).json({ success: false, error: '只有待审批的申请才能批准' });
+      return;
+    }
+
+    const tool = db.prepare('SELECT * FROM tools WHERE id = ?').get(borrow.toolId) as Tool | undefined;
+    if (!tool || tool.stock <= 0) {
+      res.status(400).json({ success: false, error: '工具库存不足' });
+      return;
+    }
+
+    const updateBorrow = db.transaction(() => {
+      db.prepare('UPDATE tools SET stock = stock - 1 WHERE id = ?').run(borrow.toolId);
+      db.prepare(`
+        UPDATE borrows SET status = 'borrowing' WHERE id = ?
+      `).run(borrow.id);
+      db.prepare(`
+        INSERT INTO deposits (borrowId, amount, type, status, deductedAmount, remark)
+        VALUES (?, ?, 'collect', 'completed', 0, ?)
+      `).run(borrow.id, tool.depositAmount, `${tool.name} 借用押金`);
+    });
+    updateBorrow();
+
+    const updated = db.prepare('SELECT * FROM borrows WHERE id = ?').get(borrow.id) as Borrow;
+    res.json({ success: true, data: updated, message: '已批准借出，押金已收取' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+router.put('/:id/reject', (req: Request, res: Response) => {
+  try {
+    const borrow = db.prepare('SELECT * FROM borrows WHERE id = ?').get(req.params.id) as Borrow | undefined;
+    if (!borrow) {
+      res.status(404).json({ success: false, error: '借用记录不存在' });
+      return;
+    }
+    if (borrow.status !== 'pending') {
+      res.status(400).json({ success: false, error: '只有待审批的申请才能拒绝' });
+      return;
+    }
+
+    db.prepare('UPDATE borrows SET status = ? WHERE id = ?').run('rejected', borrow.id);
+    const updated = db.prepare('SELECT * FROM borrows WHERE id = ?').get(borrow.id) as Borrow;
+    res.json({ success: true, data: updated, message: '已拒绝申请' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+router.put('/:id/return', (req: Request, res: Response) => {
+  try {
+    const borrow = db.prepare('SELECT * FROM borrows WHERE id = ?').get(req.params.id) as Borrow | undefined;
+    if (!borrow) {
+      res.status(404).json({ success: false, error: '借用记录不存在' });
+      return;
+    }
+    if (borrow.status !== 'borrowing' && borrow.status !== 'overdue') {
+      res.status(400).json({ success: false, error: '只有借用中的工具才能归还' });
+      return;
+    }
+
+    const tool = db.prepare('SELECT * FROM tools WHERE id = ?').get(borrow.toolId) as Tool | undefined;
+
+    const damages = db.prepare('SELECT * FROM damages WHERE borrowId = ?').all(borrow.id) as Damage[];
+    const totalDamageCompensation = damages.reduce((sum, d) => sum + d.compensationAmount, 0);
+
+    const collectDeposit = db.prepare('SELECT * FROM deposits WHERE borrowId = ? AND type = ?').get(borrow.id, 'collect') as Deposit | undefined;
+    const depositAmount = collectDeposit ? collectDeposit.amount : (tool?.depositAmount || 0);
+    const refundAmount = Math.max(0, depositAmount - totalDamageCompensation);
+
+    const returnBorrow = db.transaction(() => {
+      db.prepare('UPDATE tools SET stock = stock + 1 WHERE id = ?').run(borrow.toolId);
+      db.prepare(`
+        UPDATE borrows SET status = 'returned', actualReturnDate = date('now', 'localtime') WHERE id = ?
+      `).run(borrow.id);
+      db.prepare(`
+        INSERT INTO deposits (borrowId, amount, type, status, deductedAmount, remark)
+        VALUES (?, ?, 'refund', 'completed', ?, ?)
+      `).run(borrow.id, refundAmount, totalDamageCompensation,
+        totalDamageCompensation > 0
+          ? `退还押金，扣除损耗赔偿 ${totalDamageCompensation} 元`
+          : '全额退还押金');
+    });
+    returnBorrow();
+
+    const updated = db.prepare('SELECT * FROM borrows WHERE id = ?').get(borrow.id) as Borrow;
+    res.json({ success: true, data: updated, message: '工具已归还，押金已结算' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const { status, actualReturnDate } = req.body;
@@ -75,24 +175,10 @@ router.put('/:id', (req: Request, res: Response) => {
       return;
     }
 
-    const newStatus = status ?? borrow.status;
-
-    if (newStatus === 'approved' && borrow.status === 'pending') {
-      const tool = db.prepare('SELECT * FROM tools WHERE id = ?').get(borrow.toolId) as Tool | undefined;
-      if (tool && tool.stock > 0) {
-        db.prepare('UPDATE tools SET stock = stock - 1 WHERE id = ?').run(borrow.toolId);
-      }
-    }
-
-    if (newStatus === 'returned' && borrow.status === 'borrowing') {
-      db.prepare('UPDATE tools SET stock = stock + 1 WHERE id = ?').run(borrow.toolId);
-      db.prepare('UPDATE deposits SET status = ? WHERE borrowId = ? AND type = ?').run('completed', borrow.id, 'refund');
-    }
-
     db.prepare(`
-      UPDATE borrows SET status = ?, actualReturnDate = COALESCE(?, actualReturnDate)
+      UPDATE borrows SET status = COALESCE(?, status), actualReturnDate = COALESCE(?, actualReturnDate)
       WHERE id = ?
-    `).run(newStatus, actualReturnDate || null, req.params.id);
+    `).run(status || null, actualReturnDate || null, req.params.id);
 
     const updated = db.prepare('SELECT * FROM borrows WHERE id = ?').get(req.params.id) as Borrow;
     res.json({ success: true, data: updated, message: '状态已更新' });
