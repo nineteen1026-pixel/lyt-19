@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import db from '../db/database.js';
 import type { Borrow, Tool, Deposit, Damage } from '../../shared/types.js';
 import { authMiddleware, getCurrentUserId } from './auth.js';
+import { checkBorrowEligibility, handleReturnCreditUpdate } from '../utils/credit.js';
+import { calculateReturnScoreChange } from '../../shared/credit.js';
 
 const router = Router();
 
@@ -85,9 +87,19 @@ router.post('/', authMiddleware, (req: Request, res: Response) => {
       return;
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as { name: string; room: string; phone: string } | undefined;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as { name: string; room: string; phone: string; creditScore: number } | undefined;
     if (!user) {
       res.status(404).json({ success: false, error: '用户不存在' });
+      return;
+    }
+
+    const eligibility = checkBorrowEligibility(userId);
+    if (!eligibility.canBorrow) {
+      res.status(400).json({
+        success: false,
+        error: eligibility.reason || '无法借用',
+        data: eligibility,
+      });
       return;
     }
 
@@ -113,7 +125,12 @@ router.post('/', authMiddleware, (req: Request, res: Response) => {
     `).run(toolId, tool.name, userId, user.name, user.room, user.phone, borrowDate, expectedReturnDate, totalRent);
 
     const borrow = db.prepare('SELECT * FROM borrows WHERE id = ?').get(info.lastInsertRowid) as Borrow;
-    res.json({ success: true, data: borrow, message: '借用申请已提交' });
+    res.json({
+      success: true,
+      data: borrow,
+      message: '借用申请已提交',
+      creditInfo: eligibility,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: (err as Error).message });
   }
@@ -212,8 +229,35 @@ router.put('/:id/return', (req: Request, res: Response) => {
     });
     returnBorrow();
 
-    const updated = db.prepare('SELECT * FROM borrows WHERE id = ?').get(borrow.id) as Borrow;
-    res.json({ success: true, data: updated, message: '工具已归还，押金已结算' });
+    const updatedBorrow = db.prepare('SELECT * FROM borrows WHERE id = ?').get(borrow.id) as Borrow;
+
+    let newCreditScore: number | undefined;
+    let creditScoreChange: number | undefined;
+    if (updatedBorrow.userId && updatedBorrow.actualReturnDate) {
+      creditScoreChange = calculateReturnScoreChange(
+        updatedBorrow.expectedReturnDate,
+        updatedBorrow.actualReturnDate
+      );
+      newCreditScore = handleReturnCreditUpdate(updatedBorrow);
+    }
+
+    let message = '工具已归还，押金已结算';
+    if (creditScoreChange !== undefined && creditScoreChange !== 0) {
+      if (creditScoreChange > 0) {
+        message += `，按时归还信用分 +${creditScoreChange}，当前信用分：${newCreditScore}`;
+      } else {
+        message += `，逾期归还信用分 ${creditScoreChange}，当前信用分：${newCreditScore}`;
+      }
+    } else if (newCreditScore !== undefined) {
+      message += `，当前信用分：${newCreditScore}`;
+    }
+
+    res.json({
+      success: true,
+      data: updatedBorrow,
+      message,
+      creditInfo: newCreditScore !== undefined ? { newScore: newCreditScore, change: creditScoreChange } : undefined,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: (err as Error).message });
   }

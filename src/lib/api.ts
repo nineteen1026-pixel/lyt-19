@@ -1,4 +1,4 @@
-import type { ApiResponse, Tool, Borrow, Deposit, Damage, DashboardStats, User, LoginResponse } from '@shared/types';
+import type { ApiResponse, Tool, Borrow, Deposit, Damage, DashboardStats, User, LoginResponse, CreditInfo } from '@shared/types';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -116,5 +116,15 @@ export const api = {
     get: (id: number) => request<Damage>(`/api/damages/${id}`),
     create: (data: Partial<Damage>) =>
       request<Damage>('/api/damages', { method: 'POST', body: JSON.stringify(data) }),
+  },
+  credit: {
+    getInfo: () => request<CreditInfo>('/api/credit/me'),
+    getEligibility: () => request<{
+      canBorrow: boolean;
+      reason?: string;
+      maxBorrows: number;
+      currentBorrows: number;
+      creditScore: number;
+    }>('/api/credit/eligibility'),
   },
 };

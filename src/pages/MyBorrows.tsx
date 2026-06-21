@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
-import type { Borrow } from '@shared/types';
+import type { Borrow, CreditInfo } from '@shared/types';
 import { borrowStatusMap, formatDate, formatMoney } from '@/lib/format';
-import { ArrowLeft, Package, User, Phone, Hash, Edit2, Save, X } from 'lucide-react';
+import { ArrowLeft, Package, Phone, Hash, Edit2, Save, X, Star } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
+import { getCreditLevelColor } from '@shared/credit';
 
 export default function MyBorrows() {
   const navigate = useNavigate();
@@ -16,14 +17,21 @@ export default function MyBorrows() {
   const [editName, setEditName] = useState('');
   const [editRoom, setEditRoom] = useState('');
   const [saving, setSaving] = useState(false);
+  const [creditInfo, setCreditInfo] = useState<CreditInfo | null>(null);
 
   const loadData = () => {
     if (!user) return;
     setLoading(true);
-    api.borrows.mine({ status: status === 'all' ? undefined : status }).then(data => {
-      setBorrows(data);
+    Promise.all([
+      api.borrows.mine({ status: status === 'all' ? undefined : status }),
+      api.credit.getInfo(),
+    ]).then(([borrowsData, creditData]) => {
+      setBorrows(borrowsData);
+      setCreditInfo(creditData);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => {
+      setLoading(false);
+    });
   };
 
   useEffect(() => {
@@ -142,6 +150,38 @@ export default function MyBorrows() {
             </button>
           )}
         </div>
+
+        {creditInfo && (
+          <div className="mb-5 p-4 bg-amber-50 rounded-lg border border-amber-200">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
+                <Star className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-semibold text-amber-900">信用分</span>
+                  <span className={`badge px-2 py-0.5 text-xs ${getCreditLevelColor(creditInfo.score)}`}>
+                    {creditInfo.level}
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <div>
+                    <span className="text-amber-700 font-bold text-xl">{creditInfo.score}</span>
+                    <span className="text-amber-600 ml-1">/ 100</span>
+                  </div>
+                  <div className="text-amber-800">
+                    可借 <b>{creditInfo.maxBorrows}</b> 件
+                    <span className="text-amber-600 mx-1">·</span>
+                    已借 <b>{creditInfo.currentBorrows}</b> 件
+                  </div>
+                </div>
+              </div>
+              <Link to="/borrows/new" className="btn btn-primary btn-sm">
+                去借用
+              </Link>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 border-t border-gray-100">
           <div className="p-3 bg-gray-50 rounded-lg">

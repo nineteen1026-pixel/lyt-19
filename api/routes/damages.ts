@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import db from '../db/database.js';
-import type { Damage } from '../../shared/types.js';
+import type { Damage, DamageSeverity } from '../../shared/types.js';
+import { handleDamageCreditUpdate } from '../utils/credit.js';
+import { calculateDamagePenalty } from '../../shared/credit.js';
 
 const router = Router();
 
@@ -41,8 +43,26 @@ router.post('/', (req: Request, res: Response) => {
       `).run(compensationAmount || 0, `损耗赔偿扣除 ${compensationAmount || 0} 元`, borrowId);
     }
 
+    let newCreditScore: number | undefined;
+    let creditScoreChange: number | undefined;
+    if (borrowId && borrowId > 0 && severity) {
+      creditScoreChange = calculateDamagePenalty(severity as DamageSeverity);
+      newCreditScore = handleDamageCreditUpdate(borrowId, severity as DamageSeverity);
+    }
+
     const damage = db.prepare('SELECT * FROM damages WHERE id = ?').get(info.lastInsertRowid) as Damage;
-    res.json({ success: true, data: damage, message: '损耗登记成功' });
+
+    let message = '损耗登记成功';
+    if (creditScoreChange !== undefined && creditScoreChange !== 0 && newCreditScore !== undefined) {
+      message += `，信用分 ${creditScoreChange}，当前信用分：${newCreditScore}`;
+    }
+
+    res.json({
+      success: true,
+      data: damage,
+      message,
+      creditInfo: newCreditScore !== undefined ? { newScore: newCreditScore, change: creditScoreChange } : undefined,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: (err as Error).message });
   }

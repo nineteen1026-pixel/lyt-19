@@ -24,6 +24,7 @@ function initDatabase() {
       name TEXT NOT NULL,
       room TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'resident',
+      creditScore INTEGER NOT NULL DEFAULT 100,
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
 
@@ -94,11 +95,18 @@ function initDatabase() {
     );
   `);
 
-  const pragma = db.prepare("PRAGMA table_info(borrows)");
-  const columns = pragma.all() as { name: string }[];
-  const hasUserId = columns.some(c => c.name === 'userId');
+  const borrowsPragma = db.prepare("PRAGMA table_info(borrows)");
+  const borrowsColumns = borrowsPragma.all() as { name: string }[];
+  const hasUserId = borrowsColumns.some(c => c.name === 'userId');
   if (!hasUserId) {
     db.exec(`ALTER TABLE borrows ADD COLUMN userId INTEGER REFERENCES users(id)`);
+  }
+
+  const usersPragma = db.prepare("PRAGMA table_info(users)");
+  const usersColumns = usersPragma.all() as { name: string }[];
+  const hasCreditScore = usersColumns.some(c => c.name === 'creditScore');
+  if (!hasCreditScore) {
+    db.exec(`ALTER TABLE users ADD COLUMN creditScore INTEGER NOT NULL DEFAULT 100`);
   }
 
   const toolCount = (db.prepare('SELECT COUNT(*) as count FROM tools').get() as { count: number }).count;

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
-import type { Tool } from '@shared/types';
-import { ArrowLeft, Save, Calculator, Hash, Phone, User } from 'lucide-react';
+import type { Tool, CreditInfo } from '@shared/types';
+import { ArrowLeft, Save, Calculator, Hash, Phone, User, AlertTriangle, CheckCircle, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatMoney } from '@/lib/format';
+import { getCreditLevelColor } from '@shared/credit';
 
 export default function BorrowForm() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export default function BorrowForm() {
     expectedReturnDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
   });
   const [saving, setSaving] = useState(false);
+  const [creditInfo, setCreditInfo] = useState<CreditInfo | null>(null);
 
   useEffect(() => {
     if (initialized && !user) {
@@ -26,6 +28,14 @@ export default function BorrowForm() {
   useEffect(() => {
     api.tools.list().then(setTools);
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      api.credit.getInfo()
+        .then(setCreditInfo)
+        .catch(console.error);
+    }
+  }, [user]);
 
   const selectedTool = useMemo(() => tools.find(t => t.id === form.toolId), [tools, form.toolId]);
 
@@ -42,6 +52,10 @@ export default function BorrowForm() {
     e.preventDefault();
     if (!form.toolId) {
       alert('请选择工具');
+      return;
+    }
+    if (creditInfo && !creditInfo.canBorrow) {
+      alert(creditInfo.reason || '暂时无法借用工具');
       return;
     }
     setSaving(true);
@@ -90,6 +104,61 @@ export default function BorrowForm() {
             <span className="badge bg-green-100 text-green-800">信息已绑定</span>
           </div>
         </div>
+
+        {creditInfo && (
+          <div className={`mb-6 p-4 rounded-lg border ${
+            creditInfo.canBorrow
+              ? 'bg-green-50 border-green-200'
+              : 'bg-red-50 border-red-200'
+          }`}>
+            <div className="flex items-start gap-4">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                creditInfo.canBorrow ? 'bg-green-100' : 'bg-red-100'
+              }`}>
+                {creditInfo.canBorrow ? (
+                  <CheckCircle className={`w-6 h-6 ${getCreditLevelColor(creditInfo.score).split(' ')[0]}`} />
+                ) : (
+                  <AlertTriangle className="w-6 h-6 text-red-500" />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Star className="w-4 h-4 text-amber-500" />
+                  <span className="font-semibold text-gray-900">信用评估</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500">信用分：</span>
+                    <span className={`font-bold ${getCreditLevelColor(creditInfo.score).split(' ')[0]}`}>
+                      {creditInfo.score}
+                    </span>
+                    <span className={`badge px-2 py-0.5 text-xs ${getCreditLevelColor(creditInfo.score)}`}>
+                      {creditInfo.level}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500">可借数量：</span>
+                    <span className="font-bold text-primary-700">
+                      {creditInfo.maxBorrows}件
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500">当前借用：</span>
+                    <span className="font-medium text-gray-700">
+                      {creditInfo.currentBorrows}件
+                    </span>
+                  </div>
+                </div>
+                {creditInfo.reason && (
+                  <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    {creditInfo.reason}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>

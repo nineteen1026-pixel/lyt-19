@@ -11,7 +11,28 @@ export interface User {
   name: string;
   room: string;
   role: UserRole;
+  creditScore: number;
   createdAt: string;
+}
+
+export interface CreditConfig {
+  initialScore: number;
+  maxScore: number;
+  minScore: number;
+  onTimeReturnBonus: number;
+  overduePenalties: { days: number; penalty: number }[];
+  damagePenalties: Record<DamageSeverity, number>;
+  borrowLimits: { minScore: number; maxBorrows: number }[];
+  minBorrowScore: number;
+}
+
+export interface CreditInfo {
+  score: number;
+  level: string;
+  maxBorrows: number;
+  currentBorrows: number;
+  canBorrow: boolean;
+  reason?: string;
 }
 
 export interface VerificationCode {

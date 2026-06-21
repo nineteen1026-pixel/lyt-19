@@ -13,6 +13,7 @@ import borrowRoutes from './routes/borrows.js'
 import depositRoutes from './routes/deposits.js'
 import damageRoutes from './routes/damages.js'
 import authRoutes from './routes/auth.js'
+import creditRoutes from './routes/credit.js'
 import './db/database.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -27,6 +28,7 @@ app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 app.use('/api/auth', authRoutes)
+app.use('/api/credit', creditRoutes)
 app.use('/api/dashboard', dashboardRoutes)
 app.use('/api/tools', toolRoutes)
 app.use('/api/borrows', borrowRoutes)
