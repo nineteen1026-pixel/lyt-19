@@ -148,6 +148,19 @@ router.put('/:id/approve', (req: Request, res: Response) => {
       return;
     }
 
+    if (borrow.userId) {
+      const eligibility = checkBorrowEligibility(borrow.userId);
+      if (!eligibility.canBorrow) {
+        db.prepare('UPDATE borrows SET status = ? WHERE id = ?').run('rejected', borrow.id);
+        res.status(400).json({
+          success: false,
+          error: `借用资格校验未通过：${eligibility.reason || '无法借用'}，申请已自动拒绝`,
+          data: { eligibility },
+        });
+        return;
+      }
+    }
+
     const tool = db.prepare('SELECT * FROM tools WHERE id = ?').get(borrow.toolId) as Tool | undefined;
     if (!tool || tool.stock <= 0) {
       res.status(400).json({ success: false, error: '工具库存不足' });

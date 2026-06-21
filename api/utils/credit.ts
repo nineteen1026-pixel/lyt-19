@@ -51,7 +51,7 @@ export function getUserCreditInfo(userId: number) {
 
   const currentBorrows = db.prepare(`
     SELECT * FROM borrows 
-    WHERE userId = ? AND status IN ('borrowing', 'overdue')
+    WHERE userId = ? AND status IN ('pending', 'borrowing', 'overdue')
   `).all(userId) as Borrow[];
 
   return getCreditInfo(user.creditScore, currentBorrows);

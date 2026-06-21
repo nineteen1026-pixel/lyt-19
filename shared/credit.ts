@@ -80,7 +80,7 @@ export function getCreditLevel(creditScore: number): string {
 }
 
 export function getCreditInfo(creditScore: number, currentBorrows: Borrow[]): CreditInfo {
-  const activeBorrows = currentBorrows.filter(b => b.status === 'borrowing' || b.status === 'overdue').length;
+  const activeBorrows = currentBorrows.filter(b => b.status === 'pending' || b.status === 'borrowing' || b.status === 'overdue').length;
   const maxBorrows = getMaxBorrows(creditScore);
   const canBorrow = creditScore >= CREDIT_CONFIG.minBorrowScore && activeBorrows < maxBorrows;
   let reason: string | undefined;
@@ -88,7 +88,7 @@ export function getCreditInfo(creditScore: number, currentBorrows: Borrow[]): Cr
   if (creditScore < CREDIT_CONFIG.minBorrowScore) {
     reason = `信用分不足${CREDIT_CONFIG.minBorrowScore}分，无法借用工具`;
   } else if (activeBorrows >= maxBorrows) {
-    reason = `已达到最大借用数量（${maxBorrows}件），请先归还后再申请`;
+    reason = `已达到最大借用数量（${maxBorrows}件），请先归还或等待审批后再申请`;
   }
 
   return {
