@@ -122,6 +122,7 @@ router.post('/login', (req: Request, res: Response) => {
 
     db.prepare('UPDATE verification_codes SET used = 1 WHERE id = ?').run(verification.id);
 
+    let isNewUser = false;
     let user = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone) as User | undefined;
 
     if (!user) {
@@ -140,6 +141,7 @@ router.post('/login', (req: Request, res: Response) => {
       `).run(phone, name.trim(), room.trim());
 
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid) as User;
+      isNewUser = true;
     } else if (name || room) {
       db.prepare(`
         UPDATE users
@@ -150,9 +152,15 @@ router.post('/login', (req: Request, res: Response) => {
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id) as User;
     }
 
+    db.prepare(`
+      UPDATE borrows
+      SET userId = ?
+      WHERE borrowerPhone = ? AND userId IS NULL
+    `).run(user.id, phone);
+
     const token = generateToken(user.id, user.role);
     const result: LoginResponse = { user, token };
-    res.json({ success: true, data: result, message: user ? '登录成功' : '注册成功并已登录' });
+    res.json({ success: true, data: result, message: isNewUser ? '注册成功并已登录' : '登录成功' });
   } catch (err) {
     res.status(500).json({ success: false, error: (err as Error).message });
   }

@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/store/auth';
 import type { DashboardStats, Borrow } from '@shared/types';
-import { Wrench, ArrowLeftRight, Wallet, AlertTriangle, Plus, ChevronRight } from 'lucide-react';
+import { Wrench, ArrowLeftRight, Wallet, AlertTriangle, Plus, ChevronRight, LogIn } from 'lucide-react';
 import { borrowStatusMap, formatDate, formatMoney } from '@/lib/format';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -15,6 +18,14 @@ export default function Dashboard() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  const handleNewBorrow = () => {
+    if (!user) {
+      navigate('/login', { state: { from: '/borrows/new' } });
+    } else {
+      navigate('/borrows/new');
+    }
+  };
 
   const statCards = [
     { label: '工具总数', value: stats?.totalTools ?? 0, icon: Wrench, gradient: 'from-primary-500 to-primary-700' },
@@ -102,13 +113,18 @@ export default function Dashboard() {
                 <div className="text-xs text-primary-600/70">录入新的共享工具</div>
               </div>
             </Link>
-            <Link to="/borrows/new" className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
-              <ArrowLeftRight className="w-5 h-5" />
+            <button
+              onClick={handleNewBorrow}
+              className="w-full text-left flex items-center gap-3 p-3 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+            >
+              {user ? <ArrowLeftRight className="w-5 h-5" /> : <LogIn className="w-5 h-5" />}
               <div>
-                <div className="font-medium text-sm">新建借用</div>
-                <div className="text-xs text-blue-600/70">登记居民借用申请</div>
+                <div className="font-medium text-sm">{user ? '新建借用' : '登录后申请借用'}</div>
+                <div className="text-xs text-blue-600/70">
+                  {user ? '登记居民借用申请' : '手机号一键登录，绑定个人记录'}
+                </div>
               </div>
-            </Link>
+            </button>
             <Link to="/damages/new" className="flex items-center gap-3 p-3 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
               <AlertTriangle className="w-5 h-5" />
               <div>

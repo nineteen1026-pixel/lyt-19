@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/store/auth';
 import type { Borrow } from '@shared/types';
 import { borrowStatusMap, formatDate, formatMoney } from '@/lib/format';
-import { Plus, Check, X, RotateCcw } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Plus, Check, X, RotateCcw, LogIn } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function BorrowList() {
+  const navigate = useNavigate();
+  const { user, initialized } = useAuthStore();
   const [borrows, setBorrows] = useState<Borrow[]>([]);
   const [status, setStatus] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -21,6 +24,14 @@ export default function BorrowList() {
   useEffect(() => {
     loadData();
   }, [status]);
+
+  const handleNewBorrow = () => {
+    if (!user) {
+      navigate('/login', { state: { from: '/borrows/new' } });
+    } else {
+      navigate('/borrows/new');
+    }
+  };
 
   const handleApprove = async (b: Borrow) => {
     if (!window.confirm(`确定批准 ${b.borrowerName} 的"${b.toolName}"借用申请？\n\n批准后将扣除库存并收取工具押金。`)) return;
@@ -61,6 +72,10 @@ export default function BorrowList() {
     { key: 'rejected', label: '已拒绝' },
   ];
 
+  if (!initialized) {
+    return <div className="text-gray-500 py-10 text-center">加载中...</div>;
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
@@ -79,10 +94,19 @@ export default function BorrowList() {
             </button>
           ))}
         </div>
-        <Link to="/borrows/new" className="btn btn-primary">
-          <Plus className="w-4 h-4 mr-1.5" />
-          新建借用
-        </Link>
+        <button onClick={handleNewBorrow} className="btn btn-primary">
+          {user ? (
+            <>
+              <Plus className="w-4 h-4 mr-1.5" />
+              新建借用
+            </>
+          ) : (
+            <>
+              <LogIn className="w-4 h-4 mr-1.5" />
+              登录后申请
+            </>
+          )}
+        </button>
       </div>
 
       <div className="card overflow-hidden">
