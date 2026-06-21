@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import db from '../db/database.js';
 import type { Borrow, Tool, Deposit, Damage } from '../../shared/types.js';
 import { authMiddleware, getCurrentUserId } from './auth.js';
-import { checkBorrowEligibility, handleReturnCreditUpdate } from '../utils/credit.js';
+import { checkBorrowEligibility, handleReturnCreditUpdate, checkApproveEligibility } from '../utils/credit.js';
 import { calculateReturnScoreChange } from '../../shared/credit.js';
 
 const router = Router();
@@ -149,8 +149,8 @@ router.put('/:id/approve', (req: Request, res: Response) => {
     }
 
     if (borrow.userId) {
-      const eligibility = checkBorrowEligibility(borrow.userId);
-      if (!eligibility.canBorrow) {
+      const eligibility = checkApproveEligibility(borrow.userId, borrow.id);
+      if (!eligibility.canApprove) {
         db.prepare('UPDATE borrows SET status = ? WHERE id = ?').run('rejected', borrow.id);
         res.status(400).json({
           success: false,

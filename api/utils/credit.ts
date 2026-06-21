@@ -5,6 +5,7 @@ import {
   calculateDamagePenalty,
   updateCreditScore,
   getCreditInfo,
+  getMaxBorrows,
   CREDIT_CONFIG,
 } from '../../shared/credit.js';
 
@@ -81,5 +82,64 @@ export function checkBorrowEligibility(userId: number): {
     maxBorrows: creditInfo.maxBorrows,
     currentBorrows: creditInfo.currentBorrows,
     creditScore: creditInfo.score,
+  };
+}
+
+export function checkApproveEligibility(userId: number, borrowId: number): {
+  canApprove: boolean;
+  reason?: string;
+  maxBorrows: number;
+  occupiedAfterApprove: number;
+  creditScore: number;
+} {
+  const user = db.prepare('SELECT creditScore FROM users WHERE id = ?').get(userId) as { creditScore: number } | undefined;
+  if (!user) {
+    return {
+      canApprove: false,
+      reason: '用户不存在',
+      maxBorrows: 0,
+      occupiedAfterApprove: 0,
+      creditScore: 0,
+    };
+  }
+
+  const { creditScore } = user;
+  const maxBorrows = getMaxBorrows(creditScore);
+
+  if (creditScore < CREDIT_CONFIG.minBorrowScore) {
+    return {
+      canApprove: false,
+      reason: `信用分不足${CREDIT_CONFIG.minBorrowScore}分，无法借用工具`,
+      maxBorrows,
+      occupiedAfterApprove: 0,
+      creditScore,
+    };
+  }
+
+  const otherActiveCount = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM borrows
+    WHERE userId = ?
+      AND id != ?
+      AND status IN ('pending', 'borrowing', 'overdue')
+  `).get(userId, borrowId) as { count: number };
+
+  const occupiedAfterApprove = otherActiveCount.count + 1;
+
+  if (occupiedAfterApprove > maxBorrows) {
+    return {
+      canApprove: false,
+      reason: `批准后借用数量（${occupiedAfterApprove}件）将超过信用分允许的上限（${maxBorrows}件）`,
+      maxBorrows,
+      occupiedAfterApprove,
+      creditScore,
+    };
+  }
+
+  return {
+    canApprove: true,
+    maxBorrows,
+    occupiedAfterApprove,
+    creditScore,
   };
 }
