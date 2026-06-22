@@ -11,6 +11,7 @@ import {
   LogIn,
   LogOut,
   Package,
+  Users,
   Settings,
   ChevronDown,
 } from 'lucide-react';
@@ -97,17 +98,30 @@ export default function Layout() {
             );
           })}
           {user && (
-            <NavLink
-              to="/my-borrows"
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                location.pathname === '/my-borrows'
-                  ? 'bg-primary-50 text-primary-700'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <Package className="w-4.5 h-4.5" />
-              我的借用
-            </NavLink>
+            <>
+              <NavLink
+                to="/my-borrows"
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  location.pathname === '/my-borrows'
+                    ? 'bg-primary-50 text-primary-700'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                <Package className="w-4.5 h-4.5" />
+                我的借用
+              </NavLink>
+              <NavLink
+                to="/my-waitlist"
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  location.pathname === '/my-waitlist'
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                <Users className="w-4.5 h-4.5" />
+                我的排队
+              </NavLink>
+            </>
           )}
         </nav>
 
@@ -136,6 +150,13 @@ export default function Layout() {
                   >
                     <Package className="w-4 h-4" />
                     我的借用记录
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); navigate('/my-waitlist'); }}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <Users className="w-4 h-4" />
+                    我的排队记录
                   </button>
                   <button
                     onClick={() => { setMenuOpen(false); navigate('/my-borrows'); }}
@@ -181,6 +202,8 @@ export default function Layout() {
             <h1 className="text-lg font-semibold text-gray-900">
               {location.pathname === '/my-borrows'
                 ? '我的借用'
+                : location.pathname === '/my-waitlist'
+                ? '我的排队'
                 : navItems.find(n => location.pathname === n.path || (n.path !== '/' && location.pathname.startsWith(n.path)))?.label || '仪表盘'}
             </h1>
           </div>

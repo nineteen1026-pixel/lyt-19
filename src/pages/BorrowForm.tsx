@@ -2,22 +2,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import type { Tool, CreditInfo } from '@shared/types';
-import { ArrowLeft, Save, Calculator, Hash, Phone, User, AlertTriangle, CheckCircle, Star } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Save, Calculator, Hash, Phone, User, AlertTriangle, CheckCircle, Star, Users, Clock } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { formatMoney } from '@/lib/format';
 import { getCreditLevelColor } from '@shared/credit';
 
 export default function BorrowForm() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, initialized } = useAuthStore();
   const [tools, setTools] = useState<Tool[]>([]);
   const [form, setForm] = useState({
-    toolId: 0,
+    toolId: Number(searchParams.get('toolId')) || 0,
     borrowDate: new Date().toISOString().slice(0, 10),
     expectedReturnDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
   });
   const [saving, setSaving] = useState(false);
   const [creditInfo, setCreditInfo] = useState<CreditInfo | null>(null);
+  const [queueMode, setQueueMode] = useState(searchParams.get('queue') === '1');
+  const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (initialized && !user) {
@@ -30,6 +33,14 @@ export default function BorrowForm() {
   }, []);
 
   useEffect(() => {
+    if (form.toolId && queueMode) {
+      api.waitlist.getToolCount(form.toolId).then(data => {
+        setWaitlistCount(data.count);
+      });
+    }
+  }, [form.toolId, queueMode]);
+
+  useEffect(() => {
     if (user) {
       api.credit.getInfo()
         .then(setCreditInfo)
@@ -38,6 +49,16 @@ export default function BorrowForm() {
   }, [user]);
 
   const selectedTool = useMemo(() => tools.find(t => t.id === form.toolId), [tools, form.toolId]);
+
+  useEffect(() => {
+    if (selectedTool) {
+      if (selectedTool.stock === 0 && selectedTool.status === 'available') {
+        setQueueMode(true);
+      } else if (selectedTool.stock > 0) {
+        setQueueMode(false);
+      }
+    }
+  }, [selectedTool]);
 
   const days = useMemo(() => {
     if (!form.borrowDate || !form.expectedReturnDate) return 0;
@@ -60,8 +81,17 @@ export default function BorrowForm() {
     }
     setSaving(true);
     try {
-      await api.borrows.create(form);
-      navigate('/my-borrows');
+      if (queueMode) {
+        await api.waitlist.create({
+          toolId: form.toolId,
+          expectedBorrowDate: form.borrowDate,
+          expectedReturnDate: form.expectedReturnDate,
+        });
+        navigate('/my-waitlist');
+      } else {
+        await api.borrows.create(form);
+        navigate('/my-borrows');
+      }
     } catch (err) {
       alert((err as Error).message);
     } finally {
@@ -75,13 +105,36 @@ export default function BorrowForm() {
 
   return (
     <div className="max-w-2xl">
-      <button onClick={() => navigate('/my-borrows')} className="btn btn-secondary mb-5">
+      <button onClick={() => navigate(queueMode ? '/my-waitlist' : '/my-borrows')} className="btn btn-secondary mb-5">
         <ArrowLeft className="w-4 h-4 mr-1.5" />
-        返回我的借用
+        {queueMode ? '返回我的排队' : '返回我的借用'}
       </button>
 
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-6">新建借用申请</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-6">
+          {queueMode ? '加入预约排队' : '新建借用申请'}
+        </h2>
+
+        {queueMode && (
+          <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                <Users className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold text-amber-900 mb-1">预约排队说明</div>
+                <div className="text-sm text-amber-700 space-y-1">
+                  <p>• 当前所选工具库存为0，您可以登记借用意向加入排队</p>
+                  <p>• 工具归还后将按排队顺序自动通知，保留24小时取件时段</p>
+                  <p>• 收到通知后请在24小时内确认借用，逾期将自动取消排队资格</p>
+                  {waitlistCount !== null && waitlistCount > 0 && (
+                    <p className="font-medium">• 当前已有 <b>{waitlistCount}</b> 人在排队等待</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mb-6 p-4 bg-primary-50 rounded-lg border border-primary-100">
           <div className="flex items-center gap-3">
@@ -169,12 +222,27 @@ export default function BorrowForm() {
               onChange={e => setForm({ ...form, toolId: Number(e.target.value) })}
             >
               <option value={0}>-- 请选择工具 --</option>
-              {tools.filter(t => t.stock > 0 && t.status === 'available').map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.image} {t.name} - 库存{t.stock} - 押金{formatMoney(t.depositAmount)} - {formatMoney(t.dailyRent)}/天
-                </option>
-              ))}
+              {tools
+                .filter(t => t.status === 'available')
+                .filter(t => queueMode ? t.stock === 0 : t.stock > 0)
+                .map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.image} {t.name} - {t.stock > 0 ? `库存${t.stock}` : '已借完'} - 押金{formatMoney(t.depositAmount)} - {formatMoney(t.dailyRent)}/天
+                  </option>
+                ))}
             </select>
+            {tools.filter(t => t.status === 'available').some(t => t.stock === 0) && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setQueueMode(!queueMode)}
+                  className="text-sm text-amber-600 hover:text-amber-700 flex items-center gap-1"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  {queueMode ? '切换到借用模式（有库存工具）' : '查看已借完的工具（可预约排队）'}
+                </button>
+              </div>
+            )}
           </div>
 
           {selectedTool && (
@@ -251,9 +319,9 @@ export default function BorrowForm() {
           <div className="flex gap-3 pt-4 border-t border-gray-100">
             <button type="submit" disabled={saving} className="btn btn-primary">
               <Save className="w-4 h-4 mr-1.5" />
-              {saving ? '提交中...' : '提交申请'}
+              {saving ? '提交中...' : (queueMode ? '加入排队' : '提交申请')}
             </button>
-            <button type="button" onClick={() => navigate('/my-borrows')} className="btn btn-secondary">
+            <button type="button" onClick={() => navigate(queueMode ? '/my-waitlist' : '/my-borrows')} className="btn btn-secondary">
               取消
             </button>
           </div>

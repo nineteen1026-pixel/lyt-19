@@ -4,6 +4,7 @@ export type DepositType = 'collect' | 'refund';
 export type DepositStatus = 'pending' | 'completed' | 'deducted';
 export type DamageSeverity = 'minor' | 'moderate' | 'severe';
 export type UserRole = 'resident' | 'admin';
+export type WaitlistStatus = 'waiting' | 'notified' | 'borrowed' | 'cancelled' | 'expired';
 
 export interface User {
   id: number;
@@ -98,6 +99,24 @@ export interface Damage {
   compensationAmount: number;
   reportedBy: string;
   images: string;
+  createdAt: string;
+}
+
+export interface Waitlist {
+  id: number;
+  toolId: number;
+  toolName: string;
+  userId: number;
+  userName: string;
+  userRoom: string;
+  userPhone: string;
+  expectedBorrowDate: string;
+  expectedReturnDate: string;
+  status: WaitlistStatus;
+  queuePosition: number | null;
+  pickupExpiresAt: string | null;
+  notifiedAt: string | null;
+  borrowId: number | null;
   createdAt: string;
 }
 

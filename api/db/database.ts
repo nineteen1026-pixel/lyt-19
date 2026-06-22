@@ -93,6 +93,27 @@ function initDatabase() {
       FOREIGN KEY (borrowId) REFERENCES borrows(id),
       FOREIGN KEY (toolId) REFERENCES tools(id)
     );
+
+    CREATE TABLE IF NOT EXISTS waitlist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      toolId INTEGER NOT NULL,
+      toolName TEXT NOT NULL,
+      userId INTEGER NOT NULL,
+      userName TEXT NOT NULL,
+      userRoom TEXT NOT NULL,
+      userPhone TEXT NOT NULL,
+      expectedBorrowDate TEXT NOT NULL,
+      expectedReturnDate TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'waiting',
+      queuePosition INTEGER,
+      pickupExpiresAt TEXT,
+      notifiedAt TEXT,
+      borrowId INTEGER,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (toolId) REFERENCES tools(id),
+      FOREIGN KEY (userId) REFERENCES users(id),
+      FOREIGN KEY (borrowId) REFERENCES borrows(id)
+    );
   `);
 
   const borrowsPragma = db.prepare("PRAGMA table_info(borrows)");

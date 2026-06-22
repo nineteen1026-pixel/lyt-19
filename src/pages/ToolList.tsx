@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import type { Tool } from '@shared/types';
 import { toolStatusMap, formatMoney } from '@/lib/format';
-import { Plus, Search, Pencil, Trash2, Edit3 } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Users } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 export default function ToolList() {
@@ -11,6 +11,7 @@ export default function ToolList() {
   const [keyword, setKeyword] = useState('');
   const [category, setCategory] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [waitlistCounts, setWaitlistCounts] = useState<Record<number, number>>({});
   const navigate = useNavigate();
 
   const loadData = () => {
@@ -21,6 +22,16 @@ export default function ToolList() {
     ]).then(([toolList, cats]) => {
       setTools(toolList);
       setCategories(cats);
+
+      const countPromises = toolList
+        .filter(t => t.stock === 0 && t.status === 'available')
+        .map(t => api.waitlist.getToolCount(t.id).then(data => ({ toolId: t.id, count: data.count })));
+
+      return Promise.all(countPromises);
+    }).then(counts => {
+      const countMap: Record<number, number> = {};
+      counts.forEach(c => { countMap[c.toolId] = c.count; });
+      setWaitlistCounts(countMap);
       setLoading(false);
     }).catch(() => setLoading(false));
   };
@@ -96,7 +107,15 @@ export default function ToolList() {
               <div className="grid grid-cols-3 gap-2 text-center text-sm mb-4 py-3 bg-gray-50 rounded-lg">
                 <div>
                   <div className="text-xs text-gray-500">库存</div>
-                  <div className="font-semibold text-gray-900 mt-0.5">{tool.stock}</div>
+                  <div className={`font-semibold mt-0.5 ${tool.stock === 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                    {tool.stock}
+                    {tool.stock === 0 && waitlistCounts[tool.id] !== undefined && waitlistCounts[tool.id] > 0 && (
+                      <span className="ml-1 text-xs text-amber-600">
+                        <Users className="w-3 h-3 inline mr-0.5" />
+                        {waitlistCounts[tool.id]}人排队
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">押金</div>
@@ -107,6 +126,17 @@ export default function ToolList() {
                   <div className="font-semibold text-accent-700 mt-0.5">{formatMoney(tool.dailyRent)}</div>
                 </div>
               </div>
+
+              {tool.stock === 0 && tool.status === 'available' && (
+                <button
+                  onClick={() => navigate(`/borrows/new?toolId=${tool.id}&queue=1`)}
+                  className="w-full mb-3 py-2 px-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-sm text-amber-800 font-medium transition-colors"
+                >
+                  <Users className="w-3.5 h-3.5 inline mr-1.5" />
+                  加入预约排队
+                  {waitlistCounts[tool.id] > 0 && ` (${waitlistCounts[tool.id]}人等待)`}
+                </button>
+              )}
 
               <div className="flex gap-2 mt-auto pt-3 border-t border-gray-100">
                 <button

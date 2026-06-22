@@ -1,9 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import db from '../db/database.js';
-import type { Borrow, Tool, Deposit, Damage } from '../../shared/types.js';
+import type { Borrow, Tool, Deposit, Damage, Waitlist } from '../../shared/types.js';
 import { authMiddleware, getCurrentUserId } from './auth.js';
 import { checkBorrowEligibility, handleReturnCreditUpdate, checkApproveEligibility } from '../utils/credit.js';
 import { calculateReturnScoreChange } from '../../shared/credit.js';
+import { notifyNextInQueue } from './waitlist.js';
 
 const router = Router();
 
@@ -265,11 +266,20 @@ router.put('/:id/return', (req: Request, res: Response) => {
       message += `，当前信用分：${newCreditScore}`;
     }
 
+    const notifiedWaitlist = notifyNextInQueue(borrow.toolId);
+
+    let waitlistInfo: { notified: Waitlist | null } | undefined;
+    if (notifiedWaitlist) {
+      message += `，已通知排队用户 ${notifiedWaitlist.userName}，请在24小时内取件`;
+      waitlistInfo = { notified: notifiedWaitlist };
+    }
+
     res.json({
       success: true,
       data: updatedBorrow,
       message,
       creditInfo: newCreditScore !== undefined ? { newScore: newCreditScore, change: creditScoreChange } : undefined,
+      waitlistInfo,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: (err as Error).message });

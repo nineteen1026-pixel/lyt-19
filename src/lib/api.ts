@@ -1,4 +1,4 @@
-import type { ApiResponse, Tool, Borrow, Deposit, Damage, DashboardStats, User, LoginResponse, CreditInfo } from '@shared/types';
+import type { ApiResponse, Tool, Borrow, Deposit, Damage, DashboardStats, User, LoginResponse, CreditInfo, Waitlist } from '@shared/types';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -126,5 +126,28 @@ export const api = {
       currentBorrows: number;
       creditScore: number;
     }>('/api/credit/eligibility'),
+  },
+  waitlist: {
+    list: (params?: { toolId?: number; status?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.toolId) q.set('toolId', String(params.toolId));
+      if (params?.status && params.status !== 'all') q.set('status', params.status);
+      const qs = q.toString();
+      return request<Waitlist[]>(`/api/waitlist${qs ? `?${qs}` : ''}`);
+    },
+    mine: (params?: { status?: string }) => {
+      const q = params?.status ? `?status=${params.status}` : '';
+      return request<Waitlist[]>(`/api/waitlist/mine${q}`);
+    },
+    get: (id: number) => request<Waitlist>(`/api/waitlist/${id}`),
+    getToolCount: (toolId: number) => request<{ count: number; firstPosition: number | null }>(`/api/waitlist/tool/${toolId}/count`),
+    create: (data: { toolId: number; expectedBorrowDate: string; expectedReturnDate: string }) =>
+      request<Waitlist>('/api/waitlist', { method: 'POST', body: JSON.stringify(data) }),
+    cancel: (id: number) =>
+      request<Waitlist>(`/api/waitlist/${id}/cancel`, { method: 'PUT' }),
+    convertToBorrow: (id: number) =>
+      request<{ borrow: Borrow; waitlist: Waitlist }>(`/api/waitlist/${id}/convert-to-borrow`, { method: 'PUT' }),
+    notifyNext: (toolId: number) =>
+      request<Waitlist | null>(`/api/waitlist/notify-next/${toolId}`, { method: 'PUT' }),
   },
 };

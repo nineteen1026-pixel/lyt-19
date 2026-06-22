@@ -1,4 +1,4 @@
-import type { BorrowStatus, DepositStatus, DamageSeverity } from '@shared/types';
+import type { BorrowStatus, DepositStatus, DamageSeverity, WaitlistStatus } from '@shared/types';
 
 export const borrowStatusMap: Record<BorrowStatus, { label: string; className: string }> = {
   pending: { label: '待审批', className: 'bg-amber-100 text-amber-800' },
@@ -7,6 +7,14 @@ export const borrowStatusMap: Record<BorrowStatus, { label: string; className: s
   borrowing: { label: '借用中', className: 'bg-primary-100 text-primary-800' },
   returned: { label: '已归还', className: 'bg-green-100 text-green-800' },
   overdue: { label: '已逾期', className: 'bg-red-100 text-red-800' },
+};
+
+export const waitlistStatusMap: Record<WaitlistStatus, { label: string; className: string }> = {
+  waiting: { label: '排队中', className: 'bg-amber-100 text-amber-800' },
+  notified: { label: '待取件', className: 'bg-blue-100 text-blue-800' },
+  borrowed: { label: '已借用', className: 'bg-green-100 text-green-800' },
+  cancelled: { label: '已取消', className: 'bg-gray-100 text-gray-700' },
+  expired: { label: '已过期', className: 'bg-red-100 text-red-800' },
 };
 
 export const depositStatusMap: Record<DepositStatus, { label: string; className: string }> = {

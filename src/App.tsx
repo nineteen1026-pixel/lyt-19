@@ -10,6 +10,7 @@ import DamageList from "@/pages/DamageList";
 import DamageForm from "@/pages/DamageForm";
 import LoginPage from "@/pages/LoginPage";
 import MyBorrows from "@/pages/MyBorrows";
+import MyWaitlist from "@/pages/MyWaitlist";
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="damages" element={<DamageList />} />
           <Route path="damages/new" element={<DamageForm />} />
           <Route path="my-borrows" element={<MyBorrows />} />
+          <Route path="my-waitlist" element={<MyWaitlist />} />
         </Route>
       </Routes>
     </Router>
