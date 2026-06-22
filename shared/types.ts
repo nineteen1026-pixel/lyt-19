@@ -61,6 +61,8 @@ export interface Tool {
   stock: number;
   status: ToolStatus;
   createdAt: string;
+  availableStock?: number;
+  lockedCount?: number;
 }
 
 export interface Borrow {

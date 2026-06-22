@@ -52,9 +52,10 @@ export default function BorrowForm() {
 
   useEffect(() => {
     if (selectedTool) {
-      if (selectedTool.stock === 0 && selectedTool.status === 'available') {
+      const available = selectedTool.availableStock ?? selectedTool.stock;
+      if (available === 0 && selectedTool.status === 'available') {
         setQueueMode(true);
-      } else if (selectedTool.stock > 0) {
+      } else if (available > 0) {
         setQueueMode(false);
       }
     }
@@ -224,14 +225,18 @@ export default function BorrowForm() {
               <option value={0}>-- 请选择工具 --</option>
               {tools
                 .filter(t => t.status === 'available')
-                .filter(t => queueMode ? t.stock === 0 : t.stock > 0)
-                .map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.image} {t.name} - {t.stock > 0 ? `库存${t.stock}` : '已借完'} - 押金{formatMoney(t.depositAmount)} - {formatMoney(t.dailyRent)}/天
-                  </option>
-                ))}
+                .filter(t => queueMode ? (t.availableStock ?? t.stock) === 0 : (t.availableStock ?? t.stock) > 0)
+                .map(t => {
+                  const available = t.availableStock ?? t.stock;
+                  const lockedPart = t.lockedCount && t.lockedCount > 0 ? `（${t.lockedCount}件已预留）` : '';
+                  return (
+                    <option key={t.id} value={t.id}>
+                      {t.image} {t.name} - {available > 0 ? `可用${available}${lockedPart}` : '已借完（可排队）'} - 押金{formatMoney(t.depositAmount)} - {formatMoney(t.dailyRent)}/天
+                    </option>
+                  );
+                })}
             </select>
-            {tools.filter(t => t.status === 'available').some(t => t.stock === 0) && (
+            {tools.filter(t => t.status === 'available').some(t => (t.availableStock ?? t.stock) === 0) && (
               <div className="mt-2">
                 <button
                   type="button"
@@ -254,10 +259,19 @@ export default function BorrowForm() {
                 <div className="flex-1">
                   <div className="font-semibold text-gray-900">{selectedTool.name}</div>
                   <div className="text-sm text-gray-600 mt-0.5">{selectedTool.description}</div>
-                  <div className="flex items-center gap-4 mt-2 text-sm">
+                  <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
                     <span>押金: <b className="text-primary-700">{formatMoney(selectedTool.depositAmount)}</b></span>
                     <span>日租金: <b className="text-accent-700">{formatMoney(selectedTool.dailyRent)}</b></span>
-                    <span>库存: <b>{selectedTool.stock}</b></span>
+                    <span>
+                      可用: <b className={(selectedTool.availableStock ?? selectedTool.stock) === 0 ? 'text-red-600' : ''}>
+                        {selectedTool.availableStock ?? selectedTool.stock}
+                      </b>
+                      {selectedTool.lockedCount && selectedTool.lockedCount > 0 && (
+                        <span className="text-blue-600 ml-1 text-xs">
+                          ({selectedTool.lockedCount}件已预留)
+                        </span>
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>

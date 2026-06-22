@@ -5,6 +5,7 @@ import { authMiddleware, getCurrentUserId } from './auth.js';
 import { checkBorrowEligibility, handleReturnCreditUpdate, checkApproveEligibility } from '../utils/credit.js';
 import { calculateReturnScoreChange } from '../../shared/credit.js';
 import { notifyNextInQueue } from './waitlist.js';
+import { checkAvailableStock } from '../utils/inventory.js';
 
 const router = Router();
 
@@ -110,8 +111,22 @@ router.post('/', authMiddleware, (req: Request, res: Response) => {
       res.status(404).json({ success: false, error: '工具不存在' });
       return;
     }
-    if (tool.stock <= 0) {
-      res.status(400).json({ success: false, error: '工具库存不足' });
+
+    const stockInfo = checkAvailableStock(toolId, 1);
+    if (!stockInfo.available) {
+      if (stockInfo.lockedCount > 0) {
+        res.status(400).json({
+          success: false,
+          error: `当前有 ${stockInfo.lockedCount} 件已被排队用户锁定预留，请稍后再试或加入排队`,
+          data: stockInfo,
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: '工具库存不足，您可以加入预约排队，归还后按顺序通知',
+          data: stockInfo,
+        });
+      }
       return;
     }
 
@@ -162,9 +177,27 @@ router.put('/:id/approve', (req: Request, res: Response) => {
       }
     }
 
+    const stockInfo = checkAvailableStock(borrow.toolId, 1);
+    if (!stockInfo.available) {
+      if (stockInfo.lockedCount > 0) {
+        res.status(400).json({
+          success: false,
+          error: `该工具当前有 ${stockInfo.lockedCount} 件已被排队用户预留，请稍后再批准`,
+          data: stockInfo,
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: '工具库存不足',
+          data: stockInfo,
+        });
+      }
+      return;
+    }
+
     const tool = db.prepare('SELECT * FROM tools WHERE id = ?').get(borrow.toolId) as Tool | undefined;
-    if (!tool || tool.stock <= 0) {
-      res.status(400).json({ success: false, error: '工具库存不足' });
+    if (!tool) {
+      res.status(404).json({ success: false, error: '工具不存在' });
       return;
     }
 

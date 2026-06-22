@@ -24,7 +24,7 @@ export default function ToolList() {
       setCategories(cats);
 
       const countPromises = toolList
-        .filter(t => t.stock === 0 && t.status === 'available')
+        .filter(t => (t.availableStock ?? t.stock) === 0 && t.status === 'available')
         .map(t => api.waitlist.getToolCount(t.id).then(data => ({ toolId: t.id, count: data.count })));
 
       return Promise.all(countPromises);
@@ -106,11 +106,16 @@ export default function ToolList() {
 
               <div className="grid grid-cols-3 gap-2 text-center text-sm mb-4 py-3 bg-gray-50 rounded-lg">
                 <div>
-                  <div className="text-xs text-gray-500">库存</div>
-                  <div className={`font-semibold mt-0.5 ${tool.stock === 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                    {tool.stock}
-                    {tool.stock === 0 && waitlistCounts[tool.id] !== undefined && waitlistCounts[tool.id] > 0 && (
-                      <span className="ml-1 text-xs text-amber-600">
+                  <div className="text-xs text-gray-500">可用库存</div>
+                  <div className={`font-semibold mt-0.5 ${(tool.availableStock ?? tool.stock) === 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                    {tool.availableStock ?? tool.stock}
+                    {tool.lockedCount && tool.lockedCount > 0 && (
+                      <span className="ml-1 text-xs text-blue-600">
+                        ({tool.lockedCount}件已预留)
+                      </span>
+                    )}
+                    {(tool.availableStock ?? tool.stock) === 0 && waitlistCounts[tool.id] !== undefined && waitlistCounts[tool.id] > 0 && (
+                      <span className="ml-1 text-xs text-amber-600 block mt-1">
                         <Users className="w-3 h-3 inline mr-0.5" />
                         {waitlistCounts[tool.id]}人排队
                       </span>
@@ -127,7 +132,7 @@ export default function ToolList() {
                 </div>
               </div>
 
-              {tool.stock === 0 && tool.status === 'available' && (
+              {(tool.availableStock ?? tool.stock) === 0 && tool.status === 'available' && (
                 <button
                   onClick={() => navigate(`/borrows/new?toolId=${tool.id}&queue=1`)}
                   className="w-full mb-3 py-2 px-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-sm text-amber-800 font-medium transition-colors"
@@ -136,6 +141,12 @@ export default function ToolList() {
                   加入预约排队
                   {waitlistCounts[tool.id] > 0 && ` (${waitlistCounts[tool.id]}人等待)`}
                 </button>
+              )}
+              {(tool.availableStock ?? tool.stock) > 0 && tool.lockedCount && tool.lockedCount > 0 && tool.status === 'available' && (
+                <div className="w-full mb-3 py-2 px-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 text-center">
+                  <Users className="w-3 h-3 inline mr-1" />
+                  有 {tool.lockedCount} 件已为排队用户预留，剩余 {tool.availableStock} 件可直接借用
+                </div>
               )}
 
               <div className="flex gap-2 mt-auto pt-3 border-t border-gray-100">
