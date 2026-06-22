@@ -61,7 +61,9 @@ export interface Tool {
   stock: number;
   status: ToolStatus;
   createdAt: string;
+  totalStock?: number;
   availableStock?: number;
+  borrowedCount?: number;
   lockedCount?: number;
 }
 

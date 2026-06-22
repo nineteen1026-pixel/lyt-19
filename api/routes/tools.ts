@@ -9,7 +9,9 @@ function enrichToolStock(tool: Tool): Tool {
   const stockInfo = checkAvailableStock(tool.id, 1);
   return {
     ...tool,
+    totalStock: stockInfo.totalStock,
     availableStock: stockInfo.availableStock,
+    borrowedCount: stockInfo.borrowedCount,
     lockedCount: stockInfo.lockedCount,
   };
 }

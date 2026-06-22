@@ -3,7 +3,7 @@ import db from '../db/database.js';
 import type { Waitlist, Tool } from '../../shared/types.js';
 import { authMiddleware, getCurrentUserId } from './auth.js';
 import { checkBorrowEligibility } from '../utils/credit.js';
-import { getAvailableStock, checkAvailableStock } from '../utils/inventory.js';
+import { getAvailableStock, checkAvailableStock, lockOneStock, releaseOneStock, getWaitingCount } from '../utils/inventory.js';
 import type { Borrow } from '../../shared/types.js';
 
 const router = Router();
@@ -49,15 +49,16 @@ function processExpiredNotifications(toolId?: number): void {
   const updateStatus = db.prepare(`
     UPDATE waitlist SET status = 'expired' WHERE id = ?
   `);
-  const releaseStock = db.prepare(`
-    UPDATE tools SET stock = stock + 1 WHERE id = ?
-  `);
 
   expiredItems.forEach(item => {
     updateStatus.run(item.id);
-    releaseStock.run(item.toolId);
+    releaseOneStock(item.toolId);
     console.log(`[排队过期] 用户 ${item.userName} 未在取件时段内确认，已释放工具 ${item.toolName} 的锁定库存`);
   });
+
+  if (toolId !== undefined) {
+    updateQueuePositions(toolId);
+  }
 }
 
 export function notifyNextInQueue(toolId: number): Waitlist | null {
@@ -72,37 +73,58 @@ export function notifyNextInQueue(toolId: number): Waitlist | null {
 
   if (!nextItem) return null;
 
-  const stockInfo = checkAvailableStock(toolId, 1);
-  if (!stockInfo.available) {
-    console.log(`[排队警告] 准备通知用户 ${nextItem.userName}，但工具 ${nextItem.toolName} 实际可用库存不足`);
+  const locked = lockOneStock(toolId);
+  if (!locked) {
+    console.log(`[排队警告] 准备通知用户 ${nextItem.userName}，但工具 ${nextItem.toolName} 库存不足，无法锁定`);
     return null;
   }
 
   const pickupExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const notifiedAt = new Date().toISOString();
 
-  const processNotify = db.transaction(() => {
-    db.prepare(`
-      UPDATE tools SET stock = stock - 1 WHERE id = ?
-    `).run(toolId);
+  db.prepare(`
+    UPDATE waitlist
+    SET status = 'notified', notifiedAt = ?, pickupExpiresAt = ?
+    WHERE id = ?
+  `).run(notifiedAt, pickupExpiresAt, nextItem.id);
 
-    db.prepare(`
-      UPDATE waitlist
-      SET status = 'notified', notifiedAt = ?, pickupExpiresAt = ?
-      WHERE id = ?
-    `).run(notifiedAt, pickupExpiresAt, nextItem.id);
-  });
-  processNotify();
-
-  console.log(`[排队通知] 工具 ${nextItem.toolName} 已归还并锁定库存，通知排队用户 ${nextItem.userName} (${nextItem.userPhone})，取件截止 ${new Date(pickupExpiresAt).toLocaleString('zh-CN')}`);
+  console.log(`[排队通知] 工具 ${nextItem.toolName} 已锁定库存，通知排队用户 ${nextItem.userName} (${nextItem.userPhone})，取件截止 ${new Date(pickupExpiresAt).toLocaleString('zh-CN')}`);
 
   updateQueuePositions(toolId);
 
   return db.prepare('SELECT * FROM waitlist WHERE id = ?').get(nextItem.id) as Waitlist;
 }
 
-function releaseAndNotifyNext(toolId: number): Waitlist | null {
-  return notifyNextInQueue(toolId);
+export function notifyAllAvailableInQueue(toolId: number): Waitlist[] {
+  const notifiedList: Waitlist[] = [];
+  const maxAttempts = 100;
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+    const stockInfo = checkAvailableStock(toolId, 1);
+    if (stockInfo.availableStock <= 0) break;
+
+    const waitingCount = getWaitingCount(toolId);
+    if (waitingCount <= 0) break;
+
+    const notified = notifyNextInQueue(toolId);
+    if (!notified) break;
+
+    notifiedList.push(notified);
+  }
+
+  if (notifiedList.length > 0) {
+    const names = notifiedList.map(n => n.userName).join('、');
+    console.log(`[批量通知] 工具 ${notifiedList[0].toolName} 共通知 ${notifiedList.length} 位排队用户：${names}`);
+  }
+
+  return notifiedList;
+}
+
+function releaseAndNotifyAll(toolId: number): Waitlist[] {
+  processExpiredNotifications(toolId);
+  return notifyAllAvailableInQueue(toolId);
 }
 
 router.get('/', (req: Request, res: Response) => {
@@ -165,14 +187,19 @@ router.get('/tool/:toolId/count', (req: Request, res: Response) => {
       LIMIT 1
     `).get(toolId) as { queuePosition: number | null } | undefined;
 
-    const available = getAvailableStock(toolId);
+    const stockInfo = checkAvailableStock(toolId);
 
     res.json({
       success: true,
       data: {
         count: result.count,
+        waitingCount: getWaitingCount(toolId),
+        notifiedCount: stockInfo.lockedCount,
         firstPosition: userPosition?.queuePosition || null,
-        availableStock: available,
+        availableStock: stockInfo.availableStock,
+        totalStock: stockInfo.totalStock,
+        borrowedCount: stockInfo.borrowedCount,
+        lockedCount: stockInfo.lockedCount,
       },
     });
   } catch (err) {
@@ -282,24 +309,24 @@ router.put('/:id/cancel', authMiddleware, (req: Request, res: Response) => {
     const toolId = waitlist.toolId;
     const wasNotified = waitlist.status === 'notified';
 
-    const processCancel = db.transaction(() => {
-      db.prepare('UPDATE waitlist SET status = ? WHERE id = ?').run('cancelled', waitlist.id);
+    db.prepare('UPDATE waitlist SET status = ? WHERE id = ?').run('cancelled', waitlist.id);
 
-      if (wasNotified) {
-        db.prepare('UPDATE tools SET stock = stock + 1 WHERE id = ?').run(toolId);
-        console.log(`[排队取消] 用户 ${waitlist.userName} 放弃了工具 ${waitlist.toolName} 的取件资格，已释放锁定库存`);
-      }
-    });
-    processCancel();
+    if (wasNotified) {
+      releaseOneStock(toolId);
+      console.log(`[排队取消] 用户 ${waitlist.userName} 放弃了工具 ${waitlist.toolName} 的取件资格，已释放锁定库存`);
+    }
 
     updateQueuePositions(toolId);
 
-    let nextNotified: Waitlist | null = null;
+    let notifiedList: Waitlist[] = [];
     let chainMessage = '';
     if (wasNotified) {
-      nextNotified = releaseAndNotifyNext(toolId);
-      if (nextNotified) {
-        chainMessage = `，已自动通知下一位排队用户 ${nextNotified.userName}`;
+      notifiedList = releaseAndNotifyAll(toolId);
+      if (notifiedList.length > 0) {
+        const names = notifiedList.map(n => n.userName).join('、');
+        chainMessage = `，已自动通知后续 ${notifiedList.length} 位排队用户：${names}`;
+      } else {
+        chainMessage = '，暂无后续排队用户';
       }
     }
 
@@ -307,7 +334,7 @@ router.put('/:id/cancel', authMiddleware, (req: Request, res: Response) => {
     res.json({
       success: true,
       data: updated,
-      nextNotified,
+      notifiedList,
       message: `已取消排队${chainMessage}`,
     });
   } catch (err) {
@@ -338,10 +365,10 @@ router.put('/:id/convert-to-borrow', authMiddleware, (req: Request, res: Respons
     if (waitlist.pickupExpiresAt && new Date(waitlist.pickupExpiresAt).getTime() < Date.now()) {
       db.transaction(() => {
         db.prepare('UPDATE waitlist SET status = ? WHERE id = ?').run('expired', waitlist.id);
-        db.prepare('UPDATE tools SET stock = stock + 1 WHERE id = ?').run(waitlist.toolId);
+        releaseOneStock(waitlist.toolId);
       })();
-      releaseAndNotifyNext(waitlist.toolId);
-      res.status(400).json({ success: false, error: '取件时段已过期，资格已释放给下一位排队用户，请重新排队' });
+      releaseAndNotifyAll(waitlist.toolId);
+      res.status(400).json({ success: false, error: '取件时段已过期，资格已释放给后续排队用户，请重新排队' });
       return;
     }
 
@@ -420,16 +447,17 @@ router.put('/notify-next/:toolId', (req: Request, res: Response) => {
   try {
     const toolId = Number(req.params.toolId);
     processExpiredNotifications(toolId);
-    const notified = notifyNextInQueue(toolId);
+    const notifiedList = notifyAllAvailableInQueue(toolId);
 
-    if (notified) {
+    if (notifiedList.length > 0) {
+      const names = notifiedList.map(n => n.userName).join('、');
       res.json({
         success: true,
-        data: notified,
-        message: `已通知用户 ${notified.userName}，请在24小时内取件（库存已锁定，独享借用资格）`,
+        data: notifiedList,
+        message: `已通知 ${notifiedList.length} 位用户：${names}，请在24小时内取件（库存已锁定，独享借用资格）`,
       });
     } else {
-      res.json({ success: true, message: '该工具暂无等待排队的用户' });
+      res.json({ success: true, message: '该工具暂无等待排队的用户或无可用库存' });
     }
   } catch (err) {
     res.status(500).json({ success: false, error: (err as Error).message });

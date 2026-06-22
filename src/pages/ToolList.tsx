@@ -104,29 +104,45 @@ export default function ToolList() {
                 {tool.description || '暂无描述'}
               </p>
 
-              <div className="grid grid-cols-3 gap-2 text-center text-sm mb-4 py-3 bg-gray-50 rounded-lg">
-                <div>
-                  <div className="text-xs text-gray-500">可用库存</div>
-                  <div className={`font-semibold mt-0.5 ${(tool.availableStock ?? tool.stock) === 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                    {tool.availableStock ?? tool.stock}
-                    {tool.lockedCount && tool.lockedCount > 0 && (
-                      <span className="ml-1 text-xs text-blue-600">
-                        ({tool.lockedCount}件已预留)
-                      </span>
-                    )}
-                    {(tool.availableStock ?? tool.stock) === 0 && waitlistCounts[tool.id] !== undefined && waitlistCounts[tool.id] > 0 && (
-                      <span className="ml-1 text-xs text-amber-600 block mt-1">
-                        <Users className="w-3 h-3 inline mr-0.5" />
-                        {waitlistCounts[tool.id]}人排队
-                      </span>
-                    )}
+              <div className="mb-4 py-3 px-3 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500">可借</div>
+                    <div className={`font-semibold mt-0.5 text-lg ${(tool.availableStock ?? tool.stock) === 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {tool.availableStock ?? tool.stock}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500">总库存</div>
+                    <div className="font-semibold mt-0.5 text-lg text-gray-700">
+                      {tool.totalStock ?? (tool.stock + (tool.borrowedCount ?? 0) + (tool.lockedCount ?? 0))}
+                    </div>
                   </div>
                 </div>
-                <div>
+                <div className="flex items-center justify-between text-xs text-gray-600 border-t border-gray-200 pt-2">
+                  <span>
+                    借用中: <b className="text-orange-600">{tool.borrowedCount ?? 0}</b>
+                  </span>
+                  <span>
+                    已预留: <b className="text-blue-600">{tool.lockedCount ?? 0}</b>
+                  </span>
+                </div>
+                {(tool.availableStock ?? tool.stock) === 0 && waitlistCounts[tool.id] !== undefined && waitlistCounts[tool.id] > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-200 text-center">
+                    <span className="text-xs text-amber-600">
+                      <Users className="w-3 h-3 inline mr-0.5" />
+                      {waitlistCounts[tool.id]} 人排队等待
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-center text-sm mb-4">
+                <div className="py-2 bg-primary-50 rounded-lg">
                   <div className="text-xs text-gray-500">押金</div>
                   <div className="font-semibold text-primary-700 mt-0.5">{formatMoney(tool.depositAmount)}</div>
                 </div>
-                <div>
+                <div className="py-2 bg-accent-50 rounded-lg">
                   <div className="text-xs text-gray-500">日租金</div>
                   <div className="font-semibold text-accent-700 mt-0.5">{formatMoney(tool.dailyRent)}</div>
                 </div>
@@ -142,10 +158,10 @@ export default function ToolList() {
                   {waitlistCounts[tool.id] > 0 && ` (${waitlistCounts[tool.id]}人等待)`}
                 </button>
               )}
-              {(tool.availableStock ?? tool.stock) > 0 && tool.lockedCount && tool.lockedCount > 0 && tool.status === 'available' && (
+              {(tool.availableStock ?? tool.stock) > 0 && (tool.lockedCount ?? 0) > 0 && tool.status === 'available' && (
                 <div className="w-full mb-3 py-2 px-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 text-center">
                   <Users className="w-3 h-3 inline mr-1" />
-                  有 {tool.lockedCount} 件已为排队用户预留，剩余 {tool.availableStock} 件可直接借用
+                  {tool.lockedCount} 件已为排队用户预留，{tool.availableStock} 件可直接借用
                 </div>
               )}
 

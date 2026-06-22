@@ -4,7 +4,7 @@ import type { Borrow, Tool, Deposit, Damage, Waitlist } from '../../shared/types
 import { authMiddleware, getCurrentUserId } from './auth.js';
 import { checkBorrowEligibility, handleReturnCreditUpdate, checkApproveEligibility } from '../utils/credit.js';
 import { calculateReturnScoreChange } from '../../shared/credit.js';
-import { notifyNextInQueue } from './waitlist.js';
+import { notifyAllAvailableInQueue } from './waitlist.js';
 import { checkAvailableStock } from '../utils/inventory.js';
 
 const router = Router();
@@ -299,12 +299,22 @@ router.put('/:id/return', (req: Request, res: Response) => {
       message += `，当前信用分：${newCreditScore}`;
     }
 
-    const notifiedWaitlist = notifyNextInQueue(borrow.toolId);
+    const notifiedWaitlists = notifyAllAvailableInQueue(borrow.toolId);
 
-    let waitlistInfo: { notified: Waitlist | null } | undefined;
-    if (notifiedWaitlist) {
-      message += `，已通知排队用户 ${notifiedWaitlist.userName}，请在24小时内取件`;
-      waitlistInfo = { notified: notifiedWaitlist };
+    let waitlistInfo: { notified: Waitlist[]; count: number } | undefined;
+    if (notifiedWaitlists.length > 0) {
+      const names = notifiedWaitlists.map(n => n.userName).join('、');
+      message += `，已通知 ${notifiedWaitlists.length} 位排队用户：${names}，请在24小时内取件`;
+      waitlistInfo = { notified: notifiedWaitlists, count: notifiedWaitlists.length };
+    } else {
+      const waitingCount = db.prepare(`
+        SELECT COUNT(*) as count
+        FROM waitlist
+        WHERE toolId = ? AND status = 'waiting'
+      `).get(borrow.toolId) as { count: number };
+      if (waitingCount.count > 0) {
+        message += `，暂无可用库存分配给 ${waitingCount.count} 位排队用户`;
+      }
     }
 
     res.json({

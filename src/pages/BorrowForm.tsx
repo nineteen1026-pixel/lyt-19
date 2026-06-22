@@ -228,10 +228,12 @@ export default function BorrowForm() {
                 .filter(t => queueMode ? (t.availableStock ?? t.stock) === 0 : (t.availableStock ?? t.stock) > 0)
                 .map(t => {
                   const available = t.availableStock ?? t.stock;
-                  const lockedPart = t.lockedCount && t.lockedCount > 0 ? `（${t.lockedCount}件已预留）` : '';
+                  const total = t.totalStock ?? (t.stock + (t.borrowedCount ?? 0) + (t.lockedCount ?? 0));
+                  const lockedPart = (t.lockedCount ?? 0) > 0 ? `（${t.lockedCount}件已预留）` : '';
+                  const borrowedPart = (t.borrowedCount ?? 0) > 0 ? `（${t.borrowedCount}件借出）` : '';
                   return (
                     <option key={t.id} value={t.id}>
-                      {t.image} {t.name} - {available > 0 ? `可用${available}${lockedPart}` : '已借完（可排队）'} - 押金{formatMoney(t.depositAmount)} - {formatMoney(t.dailyRent)}/天
+                      {t.image} {t.name} - 总{total}{available > 0 ? ` 可借${available}${lockedPart}${borrowedPart}` : ' 已借完（可排队）'} - 押金{formatMoney(t.depositAmount)} - {formatMoney(t.dailyRent)}/天
                     </option>
                   );
                 })}
@@ -263,15 +265,25 @@ export default function BorrowForm() {
                     <span>押金: <b className="text-primary-700">{formatMoney(selectedTool.depositAmount)}</b></span>
                     <span>日租金: <b className="text-accent-700">{formatMoney(selectedTool.dailyRent)}</b></span>
                     <span>
-                      可用: <b className={(selectedTool.availableStock ?? selectedTool.stock) === 0 ? 'text-red-600' : ''}>
+                      可借: <b className={(selectedTool.availableStock ?? selectedTool.stock) === 0 ? 'text-red-600' : 'text-green-600'}>
                         {selectedTool.availableStock ?? selectedTool.stock}
                       </b>
-                      {selectedTool.lockedCount && selectedTool.lockedCount > 0 && (
-                        <span className="text-blue-600 ml-1 text-xs">
-                          ({selectedTool.lockedCount}件已预留)
-                        </span>
-                      )}
                     </span>
+                    <span>
+                      总: <b className="text-gray-700">
+                        {selectedTool.totalStock ?? (selectedTool.stock + (selectedTool.borrowedCount ?? 0) + (selectedTool.lockedCount ?? 0))}
+                      </b>
+                    </span>
+                    {(selectedTool.borrowedCount ?? 0) > 0 && (
+                      <span className="text-xs text-orange-600">
+                        借出{selectedTool.borrowedCount}件
+                      </span>
+                    )}
+                    {(selectedTool.lockedCount ?? 0) > 0 && (
+                      <span className="text-xs text-blue-600">
+                        预留{selectedTool.lockedCount}件
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
