@@ -2,7 +2,7 @@ import type { BorrowStatus, DepositStatus, DamageSeverity, WaitlistStatus } from
 
 export const borrowStatusMap: Record<BorrowStatus, { label: string; className: string }> = {
   pending: { label: '待审批', className: 'bg-amber-100 text-amber-800' },
-  approved: { label: '已批准', className: 'bg-blue-100 text-blue-800' },
+  approved: { label: '待支付', className: 'bg-orange-100 text-orange-800' },
   rejected: { label: '已拒绝', className: 'bg-gray-100 text-gray-700' },
   borrowing: { label: '借用中', className: 'bg-primary-100 text-primary-800' },
   returned: { label: '已归还', className: 'bg-green-100 text-green-800' },
@@ -18,9 +18,11 @@ export const waitlistStatusMap: Record<WaitlistStatus, { label: string; classNam
 };
 
 export const depositStatusMap: Record<DepositStatus, { label: string; className: string }> = {
-  pending: { label: '待处理', className: 'bg-amber-100 text-amber-800' },
+  pending: { label: '待支付', className: 'bg-amber-100 text-amber-800' },
   completed: { label: '已完成', className: 'bg-green-100 text-green-800' },
   deducted: { label: '已扣款', className: 'bg-red-100 text-red-800' },
+  refunding: { label: '退款中', className: 'bg-blue-100 text-blue-800' },
+  refund_failed: { label: '退款失败', className: 'bg-red-100 text-red-800' },
 };
 
 export const damageSeverityMap: Record<DamageSeverity, { label: string; className: string }> = {

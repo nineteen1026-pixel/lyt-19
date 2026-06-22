@@ -31,7 +31,7 @@ export function checkAvailableStock(toolId: number, needed: number = 1): {
   borrowedCount: number;
   lockedCount: number;
 } {
-  const tool = db.prepare('SELECT stock, totalStock FROM tools WHERE id = ?').get(toolId) as { stock: number; totalStock?: number } | undefined;
+  const tool = db.prepare('SELECT stock FROM tools WHERE id = ?').get(toolId) as { stock: number } | undefined;
   if (!tool) {
     return {
       available: false,

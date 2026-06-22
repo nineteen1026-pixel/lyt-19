@@ -150,4 +150,54 @@ export const api = {
     notifyNext: (toolId: number) =>
       request<Waitlist | null>(`/api/waitlist/notify-next/${toolId}`, { method: 'PUT' }),
   },
+  payments: {
+    createDepositOrder: (data: { borrowId: number; payChannel?: string }) =>
+      request<{
+        deposit: Deposit;
+        payInfo: {
+          outTradeNo: string;
+          amount: number;
+          payChannel: string;
+          description: string;
+          qrCodeUrl: string;
+          expireSeconds: number;
+        };
+      }>('/api/payments/deposit/create', { method: 'POST', body: JSON.stringify(data) }),
+    mockPayDeposit: (data: { depositId: number; payChannel?: string; simulateFail?: boolean }) =>
+      request<{ deposit: Deposit; borrow: Borrow }>('/api/payments/deposit/mock-pay', { method: 'POST', body: JSON.stringify(data) }),
+    getDepositStatus: (depositId: number) =>
+      request<{
+        deposit: Deposit;
+        borrowStatus?: string;
+        isPayCompleted: boolean;
+        isBorrowActivated: boolean;
+      }>(`/api/payments/deposit/status/${depositId}`),
+    createRefund: (data: { borrowId: number; refundAmount?: number; deductedAmount?: number; remark?: string }) =>
+      request<{
+        refundDeposit: Deposit;
+        refundInfo: {
+          refundTransactionId: string;
+          amount: number;
+          deductedAmount: number;
+          originalTransactionId?: string;
+          payChannel: string;
+          expectedArriveTime: string;
+        };
+      }>('/api/payments/refund/create', { method: 'POST', body: JSON.stringify(data) }),
+    mockProcessRefund: (data: { refundDepositId: number; simulateFail?: boolean }) =>
+      request<Deposit>('/api/payments/refund/mock-process', { method: 'POST', body: JSON.stringify(data) }),
+    getBorrowDepositInfo: (borrowId: number) =>
+      request<{
+        borrow: Borrow;
+        collectDeposit?: Deposit;
+        refundDeposits: Deposit[];
+        summary: {
+          shouldCollect: number;
+          collected: number;
+          totalDeducted: number;
+          totalRefunded: number;
+          pendingRefund: number;
+        };
+      }>(`/api/payments/borrow/${borrowId}/deposit-info`),
+  },
 };

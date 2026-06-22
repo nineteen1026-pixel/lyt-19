@@ -77,6 +77,12 @@ function initDatabase() {
       deductedAmount REAL NOT NULL DEFAULT 0,
       remark TEXT DEFAULT '',
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      payChannel TEXT DEFAULT '',
+      transactionId TEXT DEFAULT '',
+      payTime TEXT,
+      refundTransactionId TEXT DEFAULT '',
+      refundTime TEXT,
+      outTradeNo TEXT DEFAULT '',
       FOREIGN KEY (borrowId) REFERENCES borrows(id)
     );
 
@@ -128,6 +134,22 @@ function initDatabase() {
   const hasCreditScore = usersColumns.some(c => c.name === 'creditScore');
   if (!hasCreditScore) {
     db.exec(`ALTER TABLE users ADD COLUMN creditScore INTEGER NOT NULL DEFAULT 100`);
+  }
+
+  const depositsPragma = db.prepare("PRAGMA table_info(deposits)");
+  const depositsColumns = depositsPragma.all() as { name: string }[];
+  const depositColumnsToAdd = [
+    { name: 'payChannel', def: "TEXT DEFAULT ''" },
+    { name: 'transactionId', def: "TEXT DEFAULT ''" },
+    { name: 'payTime', def: 'TEXT' },
+    { name: 'refundTransactionId', def: "TEXT DEFAULT ''" },
+    { name: 'refundTime', def: 'TEXT' },
+    { name: 'outTradeNo', def: "TEXT DEFAULT ''" },
+  ];
+  for (const col of depositColumnsToAdd) {
+    if (!depositsColumns.some(c => c.name === col.name)) {
+      db.exec(`ALTER TABLE deposits ADD COLUMN ${col.name} ${col.def}`);
+    }
   }
 
   const toolCount = (db.prepare('SELECT COUNT(*) as count FROM tools').get() as { count: number }).count;

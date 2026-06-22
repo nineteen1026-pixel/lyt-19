@@ -15,6 +15,7 @@ import borrowRoutes from './routes/borrows.js'
 import depositRoutes from './routes/deposits.js'
 import damageRoutes from './routes/damages.js'
 import waitlistRoutes from './routes/waitlist.js'
+import paymentRoutes from './routes/payments.js'
 import './db/database.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -36,6 +37,7 @@ app.use('/api/borrows', borrowRoutes)
 app.use('/api/deposits', depositRoutes)
 app.use('/api/damages', damageRoutes)
 app.use('/api/waitlist', waitlistRoutes)
+app.use('/api/payments', paymentRoutes)
 
 app.use(
   '/api/health',

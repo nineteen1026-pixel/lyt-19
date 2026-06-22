@@ -1,7 +1,8 @@
 export type ToolStatus = 'available' | 'maintenance' | 'retired';
 export type BorrowStatus = 'pending' | 'approved' | 'rejected' | 'borrowing' | 'returned' | 'overdue';
 export type DepositType = 'collect' | 'refund';
-export type DepositStatus = 'pending' | 'completed' | 'deducted';
+export type DepositStatus = 'pending' | 'completed' | 'deducted' | 'refunding' | 'refund_failed';
+export type PayChannel = 'wechat' | 'alipay' | 'balance';
 export type DamageSeverity = 'minor' | 'moderate' | 'severe';
 export type UserRole = 'resident' | 'admin';
 export type WaitlistStatus = 'waiting' | 'notified' | 'borrowed' | 'cancelled' | 'expired';
@@ -92,6 +93,12 @@ export interface Deposit {
   deductedAmount: number;
   remark: string;
   createdAt: string;
+  payChannel?: PayChannel | string;
+  transactionId?: string;
+  payTime?: string | null;
+  refundTransactionId?: string | null;
+  refundTime?: string | null;
+  outTradeNo?: string;
 }
 
 export interface Damage {

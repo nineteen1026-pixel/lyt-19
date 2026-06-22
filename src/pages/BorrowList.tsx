@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
-import type { Borrow } from '@shared/types';
+import type { Borrow, Deposit, Tool } from '@shared/types';
 import { borrowStatusMap, formatDate, formatMoney } from '@/lib/format';
-import { Plus, Check, X, RotateCcw, LogIn } from 'lucide-react';
+import { Plus, Check, X, RotateCcw, LogIn, CreditCard } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import DepositPayModal from '@/components/DepositPayModal';
 
 export default function BorrowList() {
   const navigate = useNavigate();
@@ -12,6 +13,18 @@ export default function BorrowList() {
   const [borrows, setBorrows] = useState<Borrow[]>([]);
   const [status, setStatus] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [toolsMap, setToolsMap] = useState<Record<number, Tool>>({});
+  const [payModalOpen, setPayModalOpen] = useState(false);
+  const [payingBorrow, setPayingBorrow] = useState<Borrow | null>(null);
+  const [payingDepositId, setPayingDepositId] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    api.tools.list().then(tools => {
+      const map: Record<number, Tool> = {};
+      tools.forEach(t => { map[t.id] = t; });
+      setToolsMap(map);
+    }).catch(() => {});
+  }, []);
 
   const loadData = () => {
     setLoading(true);
@@ -35,13 +48,31 @@ export default function BorrowList() {
   };
 
   const handleApprove = async (b: Borrow) => {
-    if (!window.confirm(`确定批准 ${b.borrowerName} 的"${b.toolName}"借用申请？\n\n批准后将扣除库存并收取工具押金。`)) return;
+    if (!window.confirm(`确定批准 ${b.borrowerName} 的"${b.toolName}"借用申请？\n\n批准后借用人需支付押金，支付成功后工具自动出库。`)) return;
     try {
-      await api.borrows.approve(b.id);
+      const resp: any = await api.borrows.approve(b.id);
       loadData();
+      if (resp && resp.status === 'approved') {
+        setTimeout(() => {
+          handleOpenPay(resp, (resp as any).deposit?.id);
+        }, 300);
+      }
     } catch (e) {
       alert((e as Error).message);
     }
+  };
+
+  const handleOpenPay = (b: Borrow, existingDepositId?: number) => {
+    setPayingBorrow(b);
+    setPayingDepositId(existingDepositId);
+    setPayModalOpen(true);
+  };
+
+  const handlePaySuccess = () => {
+    setPayModalOpen(false);
+    setPayingBorrow(null);
+    setPayingDepositId(undefined);
+    loadData();
   };
 
   const handleReject = async (id: number) => {
@@ -67,6 +98,7 @@ export default function BorrowList() {
   const statusTabs = [
     { key: 'all', label: '全部' },
     { key: 'pending', label: '待审批' },
+    { key: 'approved', label: '待支付' },
     { key: 'borrowing', label: '借用中' },
     { key: 'returned', label: '已归还' },
     { key: 'overdue', label: '已逾期' },
@@ -150,7 +182,7 @@ export default function BorrowList() {
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         {b.status === 'pending' && (
                           <>
                             <button onClick={() => handleApprove(b)} className="btn btn-sm bg-green-600 text-white hover:bg-green-700">
@@ -160,6 +192,12 @@ export default function BorrowList() {
                               <X className="w-3.5 h-3.5 mr-0.5" />拒绝
                             </button>
                           </>
+                        )}
+                        {b.status === 'approved' && (
+                          <button onClick={() => handleOpenPay(b)} className="btn btn-sm bg-orange-600 text-white hover:bg-orange-700">
+                            <CreditCard className="w-3.5 h-3.5 mr-0.5" />
+                            {toolsMap[b.toolId] ? `支付押金 ¥${toolsMap[b.toolId].depositAmount.toFixed(2)}` : '支付押金'}
+                          </button>
                         )}
                         {(b.status === 'borrowing' || b.status === 'overdue') && (
                           <button onClick={() => handleReturn(b)} className="btn btn-sm bg-blue-600 text-white hover:bg-blue-700">
@@ -175,6 +213,17 @@ export default function BorrowList() {
           </div>
         )}
       </div>
+
+      {payingBorrow && (
+        <DepositPayModal
+          open={payModalOpen}
+          onClose={() => { setPayModalOpen(false); setPayingBorrow(null); }}
+          borrow={payingBorrow}
+          depositAmount={toolsMap[payingBorrow.toolId]?.depositAmount || 0}
+          existingDepositId={payingDepositId}
+          onPaySuccess={handlePaySuccess}
+        />
+      )}
     </div>
   );
 }

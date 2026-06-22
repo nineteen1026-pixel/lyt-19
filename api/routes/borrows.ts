@@ -201,20 +201,29 @@ router.put('/:id/approve', (req: Request, res: Response) => {
       return;
     }
 
+    const outTradeNo = `DEP${borrow.id}${Date.now()}`;
+
     const updateBorrow = db.transaction(() => {
-      db.prepare('UPDATE tools SET stock = stock - 1 WHERE id = ?').run(borrow.toolId);
       db.prepare(`
-        UPDATE borrows SET status = 'borrowing' WHERE id = ?
+        UPDATE borrows SET status = 'approved' WHERE id = ?
       `).run(borrow.id);
       db.prepare(`
-        INSERT INTO deposits (borrowId, amount, type, status, deductedAmount, remark)
-        VALUES (?, ?, 'collect', 'completed', 0, ?)
-      `).run(borrow.id, tool.depositAmount, `${tool.name} 借用押金`);
+        INSERT INTO deposits (borrowId, amount, type, status, deductedAmount, remark, outTradeNo)
+        VALUES (?, ?, 'collect', 'pending', 0, ?, ?)
+      `).run(borrow.id, tool.depositAmount, `${tool.name} 借用押金（待支付）`, outTradeNo);
     });
     updateBorrow();
 
     const updated = db.prepare('SELECT * FROM borrows WHERE id = ?').get(borrow.id) as Borrow;
-    res.json({ success: true, data: updated, message: '已批准借出，押金已收取' });
+    const pendingDeposit = db.prepare('SELECT * FROM deposits WHERE borrowId = ? AND type = ? AND status = ? ORDER BY id DESC LIMIT 1')
+      .get(borrow.id, 'collect', 'pending') as Deposit | undefined;
+
+    res.json({
+      success: true,
+      data: updated,
+      message: '已批准借用，请完成押金支付后自动出库',
+      deposit: pendingDeposit,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: (err as Error).message });
   }
@@ -257,24 +266,65 @@ router.put('/:id/return', (req: Request, res: Response) => {
     const damages = db.prepare('SELECT * FROM damages WHERE borrowId = ?').all(borrow.id) as Damage[];
     const totalDamageCompensation = damages.reduce((sum, d) => sum + d.compensationAmount, 0);
 
-    const collectDeposit = db.prepare('SELECT * FROM deposits WHERE borrowId = ? AND type = ?').get(borrow.id, 'collect') as Deposit | undefined;
+    const collectDeposit = db.prepare('SELECT * FROM deposits WHERE borrowId = ? AND type = ? ORDER BY id DESC LIMIT 1').get(borrow.id, 'collect') as Deposit | undefined;
     const depositAmount = collectDeposit ? collectDeposit.amount : (tool?.depositAmount || 0);
     const refundAmount = Math.max(0, depositAmount - totalDamageCompensation);
+
+    const refundRemark = totalDamageCompensation > 0
+      ? `退还押金，扣除损耗赔偿 ${totalDamageCompensation} 元（原路退款中）`
+      : '全额退还押金（原路退款中）';
+
+    const refundTransactionId = (() => {
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      const random = Math.random().toString(36).slice(2, 10).toUpperCase();
+      return `RF${date}${random}`;
+    })();
+
+    let refundDepositId: number | undefined;
 
     const returnBorrow = db.transaction(() => {
       db.prepare('UPDATE tools SET stock = stock + 1 WHERE id = ?').run(borrow.toolId);
       db.prepare(`
         UPDATE borrows SET status = 'returned', actualReturnDate = date('now', 'localtime') WHERE id = ?
       `).run(borrow.id);
-      db.prepare(`
-        INSERT INTO deposits (borrowId, amount, type, status, deductedAmount, remark)
-        VALUES (?, ?, 'refund', 'completed', ?, ?)
-      `).run(borrow.id, refundAmount, totalDamageCompensation,
-        totalDamageCompensation > 0
-          ? `退还押金，扣除损耗赔偿 ${totalDamageCompensation} 元`
-          : '全额退还押金');
+
+      const info = db.prepare(`
+        INSERT INTO deposits (borrowId, amount, type, status, deductedAmount, remark, payChannel, transactionId, refundTransactionId, refundTime)
+        VALUES (?, ?, 'refund', 'refunding', ?, ?, ?, ?, ?, NULL)
+      `).run(
+        borrow.id,
+        refundAmount,
+        totalDamageCompensation,
+        refundRemark,
+        collectDeposit?.payChannel || 'wechat',
+        collectDeposit?.transactionId || '',
+        refundTransactionId,
+      );
+      refundDepositId = Number(info.lastInsertRowid);
     });
     returnBorrow();
+
+    let refundSuccess = false;
+    let refundMessage = '';
+    try {
+      const result = db.transaction(() => {
+        const refundDep = db.prepare('SELECT * FROM deposits WHERE id = ?').get(refundDepositId) as Deposit | undefined;
+        if (refundDep && refundDep.status === 'refunding' && refundDep.refundTransactionId) {
+          db.prepare(`UPDATE deposits SET status = 'completed', refundTime = datetime('now', 'localtime') WHERE id = ?`)
+            .run(refundDep.id);
+          return true;
+        }
+        return false;
+      })();
+      refundSuccess = result;
+      refundMessage = refundSuccess
+        ? `原路退款 ¥${refundAmount.toFixed(2)} 已成功到账（${collectDeposit?.payChannel === 'alipay' ? '支付宝' : collectDeposit?.payChannel === 'balance' ? '余额' : '微信'}原路退回）`
+        : '';
+    } catch {
+      refundMessage = '原路退款处理中，预计 1-3 个工作日内到账';
+    }
 
     const updatedBorrow = db.prepare('SELECT * FROM borrows WHERE id = ?').get(borrow.id) as Borrow;
 
@@ -288,7 +338,16 @@ router.put('/:id/return', (req: Request, res: Response) => {
       newCreditScore = handleReturnCreditUpdate(updatedBorrow);
     }
 
-    let message = '工具已归还，押金已结算';
+    const finalRefundDeposit = refundDepositId
+      ? (db.prepare('SELECT * FROM deposits WHERE id = ?').get(refundDepositId) as Deposit | undefined)
+      : undefined;
+
+    let message = '工具已归还';
+    if (refundMessage) {
+      message += `，${refundMessage}`;
+    } else if (refundAmount > 0) {
+      message += `，押金原路退款 ¥${refundAmount.toFixed(2)} 处理中`;
+    }
     if (creditScoreChange !== undefined && creditScoreChange !== 0) {
       if (creditScoreChange > 0) {
         message += `，按时归还信用分 +${creditScoreChange}，当前信用分：${newCreditScore}`;
@@ -323,6 +382,15 @@ router.put('/:id/return', (req: Request, res: Response) => {
       message,
       creditInfo: newCreditScore !== undefined ? { newScore: newCreditScore, change: creditScoreChange } : undefined,
       waitlistInfo,
+      refundInfo: finalRefundDeposit ? {
+        deposit: finalRefundDeposit,
+        refundAmount,
+        deductedAmount: totalDamageCompensation,
+        originalTransactionId: collectDeposit?.transactionId,
+        payChannel: collectDeposit?.payChannel || 'wechat',
+        refundTransactionId: finalRefundDeposit.refundTransactionId,
+        refundSuccess,
+      } : undefined,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: (err as Error).message });

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
-import type { Borrow, CreditInfo } from '@shared/types';
+import type { Borrow, CreditInfo, Tool } from '@shared/types';
 import { borrowStatusMap, formatDate, formatMoney } from '@/lib/format';
-import { ArrowLeft, Package, Phone, Hash, Edit2, Save, X, Star } from 'lucide-react';
+import { ArrowLeft, Package, Phone, Hash, Edit2, Save, X, Star, CreditCard } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { getCreditLevelColor } from '@shared/credit';
+import DepositPayModal from '@/components/DepositPayModal';
 
 export default function MyBorrows() {
   const navigate = useNavigate();
@@ -18,6 +19,27 @@ export default function MyBorrows() {
   const [editRoom, setEditRoom] = useState('');
   const [saving, setSaving] = useState(false);
   const [creditInfo, setCreditInfo] = useState<CreditInfo | null>(null);
+  const [toolsMap, setToolsMap] = useState<Record<number, Tool>>({});
+  const [payModalOpen, setPayModalOpen] = useState(false);
+  const [payingBorrow, setPayingBorrow] = useState<Borrow | null>(null);
+
+  useEffect(() => {
+    api.tools.list().then(tools => {
+      const map: Record<number, Tool> = {};
+      tools.forEach(t => { map[t.id] = t; });
+      setToolsMap(map);
+    }).catch(() => {});
+  }, []);
+
+  const handleOpenPay = (b: Borrow) => {
+    setPayingBorrow(b);
+    setPayModalOpen(true);
+  };
+  const handlePaySuccess = () => {
+    setPayModalOpen(false);
+    setPayingBorrow(null);
+    loadData();
+  };
 
   const loadData = () => {
     if (!user) return;
@@ -73,6 +95,7 @@ export default function MyBorrows() {
   const statusTabs = [
     { key: 'all', label: '全部' },
     { key: 'pending', label: '待审批' },
+    { key: 'approved', label: '待支付' },
     { key: 'borrowing', label: '借用中' },
     { key: 'returned', label: '已归还' },
     { key: 'overdue', label: '已逾期' },
@@ -183,7 +206,7 @@ export default function MyBorrows() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 border-t border-gray-100">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-5 border-t border-gray-100">
           <div className="p-3 bg-gray-50 rounded-lg">
             <div className="text-xs text-gray-500 mb-1">总借用次数</div>
             <div className="text-2xl font-bold text-gray-900">{borrows.length}</div>
@@ -191,6 +214,10 @@ export default function MyBorrows() {
           <div className="p-3 bg-amber-50 rounded-lg">
             <div className="text-xs text-amber-600 mb-1">待审批</div>
             <div className="text-2xl font-bold text-amber-700">{borrows.filter(b => b.status === 'pending').length}</div>
+          </div>
+          <div className="p-3 bg-orange-50 rounded-lg">
+            <div className="text-xs text-orange-600 mb-1">待支付</div>
+            <div className="text-2xl font-bold text-orange-700">{borrows.filter(b => b.status === 'approved').length}</div>
           </div>
           <div className="p-3 bg-primary-50 rounded-lg">
             <div className="text-xs text-primary-600 mb-1">借用中</div>
@@ -237,11 +264,16 @@ export default function MyBorrows() {
                 <div key={b.id} className="p-5 hover:bg-gray-50/50 transition-colors">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1.5">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <h3 className="font-semibold text-gray-900">{b.toolName}</h3>
                         <span className={`badge ${borrowStatusMap[b.status].className}`}>
                           {borrowStatusMap[b.status].label}
                         </span>
+                        {b.status === 'approved' && toolsMap[b.toolId] && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 text-xs font-medium border border-orange-200">
+                            待付押金：{formatMoney(toolsMap[b.toolId].depositAmount)}
+                          </span>
+                        )}
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1.5 text-sm text-gray-600">
                         <div>
@@ -262,6 +294,14 @@ export default function MyBorrows() {
                         </div>
                       </div>
                     </div>
+                    {b.status === 'approved' && (
+                      <div className="flex-shrink-0">
+                        <button onClick={() => handleOpenPay(b)} className="btn btn-sm bg-orange-600 text-white hover:bg-orange-700">
+                          <CreditCard className="w-3.5 h-3.5 mr-0.5" />
+                          立即支付押金
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -269,6 +309,16 @@ export default function MyBorrows() {
           )}
         </div>
       </div>
+
+      {payingBorrow && (
+        <DepositPayModal
+          open={payModalOpen}
+          onClose={() => { setPayModalOpen(false); setPayingBorrow(null); }}
+          borrow={payingBorrow}
+          depositAmount={toolsMap[payingBorrow.toolId]?.depositAmount || 0}
+          onPaySuccess={handlePaySuccess}
+        />
+      )}
     </div>
   );
 }
